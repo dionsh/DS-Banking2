@@ -32,6 +32,9 @@ import AtmLocations from "../screens/AtmLocations";
 import MyCharacter from "../screens/MyCharacter";
 import InviteFriends from "../screens/InviteFriends";
 import Subscriptions from "../screens/Subscriptions";
+import Analytics from "../screens/Analytics";
+import AICoach from "../screens/AICoach";
+import InvestSimulator from "../screens/InvestSimulator";
 
 const Drawer = createDrawerNavigator();
 
@@ -76,6 +79,39 @@ export default function DrawerNavigation() {
           drawerLabel: t("menu.myCharacter"),
           drawerIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="tshirt-crew-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Analytics"
+        component={Analytics}
+        options={{
+          drawerLabel: "Analytics",
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="chart-donut" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="AI Coach"
+        component={AICoach}
+        options={{
+          drawerLabel: "AI Coach",
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="robot-happy-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Invest Simulator"
+        component={InvestSimulator}
+        options={{
+          drawerLabel: "Invest Simulator",
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="finance" color={color} size={size} />
           ),
         }}
       />

@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -31,6 +32,7 @@ export default function Subscriptions() {
 
   const [userId, setUserId] = useState(null);
   const [plans, setPlans] = useState([]);
+  const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState(null);
 
@@ -40,15 +42,39 @@ export default function Subscriptions() {
       if (!stored) return;
       setUserId(stored.user_id);
 
-      const res = await fetch(`${API_BASE}/get_subscriptions.php?user_id=${stored.user_id}`);
-      const data = await res.json();
+      const [subsRes, cardRes] = await Promise.all([
+        fetch(`${API_BASE}/get_subscriptions.php?user_id=${stored.user_id}`),
+        fetch(`${API_BASE}/get_card.php?user_id=${stored.user_id}`),
+      ]);
+
+      const data = await subsRes.json();
       if (data.status === "success") {
         setPlans(data.plans || []);
+      }
+
+      const card = await cardRes.json();
+      if (card.status === "success") {
+        setBalance(Number(card.card.balance) || 0);
+      } else {
+        setBalance(Number(stored.balance) || 0);
       }
     } catch (err) {
       console.log("Subscriptions load error:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Keep the balance in sync for other screens after a charge/refund.
+  const syncBalance = async (newBalance) => {
+    setBalance(newBalance);
+    try {
+      const stored = JSON.parse(await AsyncStorage.getItem("user"));
+      if (stored) {
+        await AsyncStorage.setItem("user", JSON.stringify({ ...stored, balance: newBalance }));
+      }
+    } catch (e) {
+      // ignore
     }
   };
 
@@ -62,7 +88,7 @@ export default function Subscriptions() {
   const activeCount = plans.filter((p) => p.active).length;
   const monthlyTotal = plans.reduce((sum, p) => (p.active ? sum + Number(p.price) : sum), 0);
 
-  const toggle = async (plan) => {
+  const runToggle = async (plan) => {
     const endpoint = plan.active ? "cancel_subscription.php" : "subscribe.php";
     setBusyKey(plan.plan_key);
     try {
@@ -76,11 +102,43 @@ export default function Subscriptions() {
         setPlans((prev) =>
           prev.map((p) => (p.plan_key === plan.plan_key ? { ...p, active: !!data.active } : p))
         );
+        if (data.new_balance != null) {
+          syncBalance(Number(data.new_balance));
+        }
+      } else {
+        Alert.alert("Couldn't complete", data.message || "Please try again.");
       }
     } catch (e) {
-      // silently ignore — UI stays as-is
+      Alert.alert("Connection error", "Please try again.");
     }
     setBusyKey(null);
+  };
+
+  const toggle = (plan) => {
+    const price = eur(plan.price);
+    if (plan.active) {
+      Alert.alert(
+        "Cancel subscription",
+        `Cancel ${plan.name}? ${price} will be refunded to your balance.`,
+        [
+          { text: "Keep", style: "cancel" },
+          { text: "Cancel & refund", onPress: () => runToggle(plan) },
+        ]
+      );
+    } else {
+      if (Number(balance) < Number(plan.price)) {
+        Alert.alert("Insufficient balance", `You need ${price} to subscribe to ${plan.name}.`);
+        return;
+      }
+      Alert.alert(
+        "Subscribe",
+        `Subscribe to ${plan.name} for ${price}/month? ${price} will be charged from your balance now.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Subscribe", onPress: () => runToggle(plan) },
+        ]
+      );
+    }
   };
 
   return (
@@ -109,6 +167,8 @@ export default function Subscriptions() {
               <Text style={styles.summaryLabel}>Per month</Text>
             </View>
           </View>
+
+          <Text style={styles.availLine}>Available balance: {eur(balance)}</Text>
 
           <Text style={styles.sectionTitle}>Manage subscriptions</Text>
 
@@ -173,8 +233,8 @@ export default function Subscriptions() {
           })}
 
           <Text style={styles.footNote}>
-            Subscriptions here are for demonstration — managing them updates your status only and
-            does not charge your balance.
+            Subscribing charges the monthly price from your balance now; cancelling refunds it.
+            Each change also appears in your Transactions.
           </Text>
         </ScrollView>
       )}
@@ -216,6 +276,12 @@ const makeStyles = (c) =>
     summaryLabel: { fontSize: 12, color: c.textMuted, letterSpacing: 1, marginTop: 4 },
     summaryDivider: { width: 1, height: 44, backgroundColor: c.divider },
 
+    availLine: {
+      fontSize: 12,
+      color: c.textMuted,
+      marginHorizontal: 20,
+      marginTop: 10,
+    },
     sectionTitle: {
       fontSize: 17,
       fontWeight: "700",

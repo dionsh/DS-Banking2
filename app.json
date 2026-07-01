@@ -27,7 +27,7 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.CAMERA"
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -38,10 +38,17 @@
         "expo-camera",
         {
           "cameraPermission": "Allow DS Banking to access your camera to scan your ID.",
-          "recordAudioAndroid": false
+          "recordAudioAndroid": true,
+          "microphonePermission": "Allow DS Banking to use the microphone so you can talk to NOVA."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow DS Banking to use the microphone so you can talk to NOVA."
+        }
+      ]
     ],
     "extra": {
       "eas": {

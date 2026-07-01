@@ -10,11 +10,16 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { DrawerActions, useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+// Voice: expo-audio records the question, nova_transcribe.php (Whisper) turns
+// it into text; expo-speech reads NOVA's replies aloud when the toggle is on.
+import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from "expo-audio";
+import * as Speech from "expo-speech";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -39,8 +44,32 @@ export default function NOVA() {
   const [cardData, setCardData] = useState(null);
   const [loadingReply, setLoadingReply] = useState(false);
   const [input, setInput] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [speakEnabled, setSpeakEnabled] = useState(false);
+  const speakEnabledRef = useRef(false);
 
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const listRef = useRef(null);
+
+  // Stop any ongoing speech when leaving the screen.
+  useEffect(() => {
+    return () => Speech.stop();
+  }, []);
+
+  const toggleSpeak = () => {
+    setSpeakEnabled((prev) => {
+      const next = !prev;
+      speakEnabledRef.current = next;
+      if (!next) Speech.stop();
+      return next;
+    });
+  };
+
+  const speakReply = (text) => {
+    if (!speakEnabledRef.current || !text) return;
+    Speech.stop();
+    Speech.speak(text, { rate: 1.0, pitch: 1.0 });
+  };
 
   // Load user
   useEffect(() => {
@@ -120,14 +149,16 @@ export default function NOVA() {
       }
 
       addMessage("bot", reply);
+      speakReply(reply);
       setLoadingReply(false);
     }, 800);
   };
 
   // Free-text questions: routed to nova_chat.php, which answers account-data
   // questions from the DB and everything else via the (banking-only) AI.
-  const sendMessage = async () => {
-    const text = input.trim();
+  // Accepts an optional text argument so voice input can send directly.
+  const sendMessage = async (textArg) => {
+    const text = (typeof textArg === "string" ? textArg : input).trim();
     if (!text || loadingReply) return;
 
     // Snapshot the recent conversation BEFORE appending the new message.
@@ -150,11 +181,70 @@ export default function NOVA() {
       const data = await res.json();
       const reply = data?.reply || t("nova.processError");
       addMessage("bot", reply);
+      speakReply(reply);
     } catch (err) {
       console.log("NOVA chat error:", err);
       addMessage("bot", t("nova.connError"));
     } finally {
       setLoadingReply(false);
+    }
+  };
+
+  // ---- voice input: record -> upload -> Whisper transcription -> send ----
+
+  const startRecording = async () => {
+    if (loadingReply || recording) return;
+    try {
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          "Microphone needed",
+          "Allow microphone access in your settings to talk to NOVA."
+        );
+        return;
+      }
+      Speech.stop();
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecording(true);
+    } catch (err) {
+      console.log("NOVA record error:", err);
+      Alert.alert("Recording error", "Couldn't start the microphone. Please try again.");
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+    setRecording(false);
+    setLoadingReply(true);
+    try {
+      await recorder.stop();
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+
+      const uri = recorder.uri;
+      if (!uri) throw new Error("No recording produced");
+
+      const form = new FormData();
+      form.append("audio", { uri, name: "voice.m4a", type: "audio/m4a" });
+      form.append("user_id", String(user?.user_id ?? ""));
+
+      const res = await fetch(`${API_BASE}/nova_transcribe.php`, {
+        method: "POST",
+        body: form, // fetch sets the multipart boundary itself
+      });
+      const data = await res.json();
+
+      setLoadingReply(false);
+      if (data?.status === "success" && data.text) {
+        sendMessage(data.text);
+      } else {
+        addMessage("bot", data?.message || "I couldn't hear that clearly — please try again.");
+      }
+    } catch (err) {
+      console.log("NOVA transcribe error:", err);
+      setLoadingReply(false);
+      addMessage("bot", "I couldn't process your voice message. Please try again.");
     }
   };
 
@@ -190,7 +280,13 @@ export default function NOVA() {
           </TouchableOpacity>
 
           <Text style={styles.headerTitle}>NOVA</Text>
-          <View style={{ width: 28 }} />
+          <TouchableOpacity onPress={toggleSpeak}>
+            <MaterialCommunityIcons
+              name={speakEnabled ? "volume-high" : "volume-off"}
+              size={26}
+              color={speakEnabled ? "#8E95F2" : "white"}
+            />
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
 
@@ -236,15 +332,26 @@ export default function NOVA() {
           </ScrollView>
 
           <View style={styles.inputBar}>
+            <TouchableOpacity
+              style={[styles.micBtn, recording && styles.micBtnActive]}
+              onPress={recording ? stopRecording : startRecording}
+              disabled={loadingReply && !recording}
+            >
+              <MaterialCommunityIcons
+                name={recording ? "stop" : "microphone"}
+                size={22}
+                color={recording ? "white" : colors.accent}
+              />
+            </TouchableOpacity>
             <TextInput
               style={styles.input}
               value={input}
               onChangeText={setInput}
-              placeholder={t("nova.placeholder")}
-              placeholderTextColor={colors.placeholder}
+              placeholder={recording ? "Listening... tap ■ when done" : t("nova.placeholder")}
+              placeholderTextColor={recording ? colors.dangerText : colors.placeholder}
               returnKeyType="send"
-              onSubmitEditing={sendMessage}
-              editable={!loadingReply}
+              onSubmitEditing={() => sendMessage()}
+              editable={!loadingReply && !recording}
               multiline
             />
             <TouchableOpacity
@@ -252,7 +359,7 @@ export default function NOVA() {
                 styles.sendBtn,
                 (!input.trim() || loadingReply) && styles.sendBtnDisabled,
               ]}
-              onPress={sendMessage}
+              onPress={() => sendMessage()}
               disabled={!input.trim() || loadingReply}
             >
               <MaterialCommunityIcons name="send" size={20} color="white" />
@@ -402,6 +509,22 @@ const makeStyles = (c) =>
       backgroundColor: c.primary,
       alignItems: "center",
       justifyContent: "center",
+    },
+
+    micBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: c.surfaceAlt,
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    micBtnActive: {
+      backgroundColor: c.danger,
+      borderColor: c.danger,
     },
 
     sendBtnDisabled: {
