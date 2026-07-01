@@ -1,12 +1,15 @@
 {
   "expo": {
     "name": "DS Banking",
-    "slug": "DS Banking",
+    "slug": "DSBanking",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/dsbank1.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "splash": {
       "image": "./assets/images/dsbank1.png",
       "resizeMode": "contain",
@@ -16,14 +19,37 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.dionsh.dsbanking",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/dsbank1.png",
         "backgroundColor": "#191970"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow DS Banking to access your camera to scan your ID.",
+          "recordAudioAndroid": false
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0c3dfd5e-4f0e-4302-b1ae-32f352520e0c"
+      }
+    },
+    "owner": "dionsh21",
+    "updates": {
+      "url": "https://u.expo.dev/0c3dfd5e-4f0e-4302-b1ae-32f352520e0c"
     }
   }
 }
