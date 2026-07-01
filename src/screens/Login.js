@@ -20,13 +20,15 @@ const Login = ({ navigation }) => {
 
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
+  const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');
   const pinInputRef = useRef(null);
 
   //Funksioni per login
   const login = async () => {
 
-    if (!name || !surname || pin.length !== 4) {
+    const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
+    if (!name || !surname || !email || !emailOk || pin.length !== 4) {
       alert(t("login.fillFields"));
       return;
     }
@@ -41,6 +43,7 @@ const Login = ({ navigation }) => {
         body: JSON.stringify({
           name: name.trim(),
           surname: surname.trim(),
+          email: email.trim(),
           pin: pin.trim(),
         }),
       });
@@ -99,6 +102,19 @@ const Login = ({ navigation }) => {
             placeholderTextColor={colors.textMuted}
             value={surname}
             onChangeText={setSurname}
+          />
+        </View>
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.usernameInput}
+            placeholder={t("common.email")}
+            placeholderTextColor={colors.textMuted}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
 

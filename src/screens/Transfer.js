@@ -8,6 +8,8 @@ import {
   Alert,
   ScrollView,
   SafeAreaView,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
@@ -29,6 +31,11 @@ export default function Transfer() {
   const [receiverEmail, setReceiverEmail] = useState("");
   const [message, setMessage] = useState("");
 
+  // PIN confirmation
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [pin, setPin] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
   useEffect(() => {
     const fetchSender = async () => {
       const user = JSON.parse(await AsyncStorage.getItem("user"));
@@ -46,12 +53,47 @@ export default function Transfer() {
     fetchSender();
   }, []);
 
-  const handleTransfer = async () => {
+  // Step 1: validate the form, then ask for the PIN.
+  const handleTransfer = () => {
     if (!amount || (!receiverEmail && !receiverName && !receiverSurname)) {
       Alert.alert(t("common.error"), t("transfer.fillInfo"));
       return;
     }
+    setPin("");
+    setPinModalVisible(true);
+  };
 
+  // Step 2: verify the PIN against the backend, then send the transfer.
+  const confirmPin = async () => {
+    if (pin.length !== 4) {
+      Alert.alert(t("common.error"), t("login.fillFields"));
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await fetch(`${API_BASE}/verify_pin.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: sender.user_id, pin }),
+      });
+      const data = await res.json();
+      if (data.status !== "success") {
+        setPin("");
+        Alert.alert(t("common.error"), data.message || "Wrong PIN");
+        setVerifying(false);
+        return;
+      }
+      // PIN correct -> proceed with the actual transfer.
+      await sendTransfer();
+    } catch (err) {
+      console.log(err);
+      Alert.alert(t("common.error"), t("common.somethingWrong"));
+    }
+    setVerifying(false);
+  };
+
+  // Step 3: the actual money transfer (runs only after the PIN is verified).
+  const sendTransfer = async () => {
     try {
       const response = await fetch(`${API_BASE}/transfer.php`, {
         method: "POST",
@@ -67,6 +109,9 @@ export default function Transfer() {
       });
 
       const data = await response.json();
+
+      // Close the PIN modal before showing the result.
+      setPinModalVisible(false);
 
       if (data.status === "success") {
         // E bane update balancen e njerit qe dergon pare lokalisht
@@ -94,6 +139,7 @@ export default function Transfer() {
       }
     } catch (error) {
       console.log(error);
+      setPinModalVisible(false);
       Alert.alert(t("common.error"), t("common.somethingWrong"));
     }
   };
@@ -174,6 +220,59 @@ export default function Transfer() {
         </TouchableOpacity>
       </View>
     </ScrollView>
+
+    {/* PIN confirmation before sending money */}
+    <Modal
+      visible={pinModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => !verifying && setPinModalVisible(false)}
+    >
+      <View style={styles.pinBackdrop}>
+        <View style={styles.pinCard}>
+          <View style={styles.pinIconWrap}>
+            <MaterialCommunityIcons name="lock-outline" size={26} color={colors.primary} />
+          </View>
+          <Text style={styles.pinTitle}>{t("login.enterPin")}</Text>
+          <Text style={styles.pinSubtitle}>
+            Confirm your transfer of {amount || "0"} EUR
+          </Text>
+
+          <TextInput
+            style={styles.pinInput}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={4}
+            value={pin}
+            onChangeText={(v) => setPin(v.replace(/[^0-9]/g, "").slice(0, 4))}
+            placeholder="••••"
+            placeholderTextColor={colors.textMuted}
+            autoFocus
+          />
+
+          <View style={styles.pinBtnRow}>
+            <TouchableOpacity
+              style={styles.pinCancel}
+              onPress={() => setPinModalVisible(false)}
+              disabled={verifying}
+            >
+              <Text style={styles.pinCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.pinConfirm}
+              onPress={confirmPin}
+              disabled={verifying}
+            >
+              {verifying ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.pinConfirmText}>Confirm & Send</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   </SafeAreaView>
 );
 }
@@ -255,4 +354,63 @@ const makeStyles = (c) =>
       fontSize: 16,
       letterSpacing: 1,
     },
+
+    // PIN modal
+    pinBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      paddingHorizontal: 30,
+    },
+    pinCard: {
+      backgroundColor: c.card,
+      borderRadius: 24,
+      padding: 26,
+      alignItems: "center",
+    },
+    pinIconWrap: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: c.surfaceAlt,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 14,
+    },
+    pinTitle: { fontSize: 19, fontWeight: "800", color: c.text },
+    pinSubtitle: {
+      fontSize: 13,
+      color: c.textMuted,
+      marginTop: 6,
+      marginBottom: 20,
+      textAlign: "center",
+    },
+    pinInput: {
+      width: "70%",
+      textAlign: "center",
+      fontSize: 26,
+      letterSpacing: 12,
+      paddingVertical: 10,
+      color: c.text,
+      borderBottomWidth: 2,
+      borderBottomColor: c.inputBorder,
+      marginBottom: 24,
+    },
+    pinBtnRow: { flexDirection: "row", gap: 12, width: "100%" },
+    pinCancel: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: "center",
+      backgroundColor: c.surfaceAlt,
+    },
+    pinCancelText: { color: c.text, fontWeight: "700", fontSize: 15 },
+    pinConfirm: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: "center",
+      backgroundColor: c.primary,
+    },
+    pinConfirmText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   });
