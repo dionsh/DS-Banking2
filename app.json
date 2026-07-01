@@ -4,7 +4,7 @@
     "slug": "DSBanking",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/dsbank1.png",
+    "icon": "./assets/images/dsbank_icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "runtimeVersion": {
@@ -21,7 +21,7 @@
     "android": {
       "package": "com.dionsh.dsbanking",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/dsbank1.png",
+        "foregroundImage": "./assets/images/dsbank_icon.png",
         "backgroundColor": "#191970"
       },
       "edgeToEdgeEnabled": true,
@@ -40,7 +40,8 @@
           "cameraPermission": "Allow DS Banking to access your camera to scan your ID.",
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
