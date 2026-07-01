@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "DS Banking",
+    "slug": "DS Banking",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/dsbank1.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/dsbank1.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#191970"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/dsbank1.png",
+        "backgroundColor": "#191970"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

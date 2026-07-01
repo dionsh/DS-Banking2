@@ -1,0 +1,77 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+package-lock.json.orig
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native builds / binaries
+.kotlin/
+*.orig.*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.apk
+*.aab
+*.ipa
+
+# Metro
+.metro-health-check*
+
+# debug / logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+*.pem
+
+# env / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# editors
+.vscode/
+.idea/
+
+# --- Backend: keep secrets & the engine out of this public mirror ---
+# (These files are intentionally not committed even if present locally.)
+backend/config.php
+backend/ca.pem
+backend/**/*.pem
+backend/database/
+backend/**/.env
+backend/feature_db.php
+backend/cashback_db.php
+backend/notifications_db.php
+backend/applepay_db.php
+backend/avatar_db.php
+backend/card_db.php
+backend/goals_db.php
+backend/subscriptions_db.php
+backend/login.php
+backend/signup.php
+backend/nova_ai.php
+backend/Dockerfile
+backend/entrypoint.sh
+*.sql
