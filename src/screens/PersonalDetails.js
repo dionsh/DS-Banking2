@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { DrawerActions } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -46,10 +45,12 @@ export default function PersonalDetails({ navigation }) {
 
       <View style={styles.header}>
         <TouchableOpacity
-               onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-               style={styles.drawerButton}
+               onPress={() =>
+                 navigation.canGoBack() ? navigation.goBack() : navigation.navigate("Profile")
+               }
+               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
              >
-               <MaterialCommunityIcons name="menu" size={28} color={lightBlue} />
+               <MaterialCommunityIcons name="arrow-left" size={28} color={lightBlue} />
              </TouchableOpacity>
 
         <Text style={styles.title}>{t("menu.personalDetails")}</Text>

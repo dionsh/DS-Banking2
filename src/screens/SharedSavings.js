@@ -4,9 +4,11 @@
 // email (the account is verified server-side), and invited users accept or
 // decline right here. Every member can "Add Money" straight from their real
 // account balance; contributions are recorded in the ledger and listed in the
-// group's history. All of it is real PHP + MySQL (shared_goals tables).
+// group's history. Each group also has a live Group Chat for its members
+// (shared_goal_messages, polled every 5s while open). All of it is real
+// PHP + MySQL (shared_goals tables).
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -47,6 +49,15 @@ const QUICK_ADD = [10, 50, 100];
 const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 const GREEN = "#2E7D32";
 
+// Chat timestamp: time for today's messages, date + time for older ones.
+const fmtMsgTime = (s) => {
+  const d = new Date(String(s).replace(" ", "T"));
+  const hm = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString()
+    ? hm
+    : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) + " " + hm;
+};
+
 export default function SharedSavings() {
   const navigation = useNavigation();
   const { colors } = useTheme();
@@ -74,6 +85,14 @@ export default function SharedSavings() {
   const [adding, setAdding] = useState(false);
   const [memberEmail, setMemberEmail] = useState("");
   const [inviting, setInviting] = useState(false);
+
+  // Group chat (a second view inside the detail modal)
+  const [detailView, setDetailView] = useState("info"); // 'info' | 'chat'
+  const [messages, setMessages] = useState([]);
+  const [msgText, setMsgText] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatScrollRef = useRef(null);
 
   const load = async (quiet = false) => {
     try {
@@ -252,6 +271,64 @@ export default function SharedSavings() {
     setInviting(false);
   };
 
+  /* ---------- group chat ---------- */
+
+  const loadMessages = async (goalId) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/get_shared_messages.php?user_id=${userId}&goal_id=${goalId}`
+      );
+      const data = await res.json();
+      if (data.status === "success") setMessages(data.messages || []);
+    } catch (e) {
+      // quiet — the poll will try again
+    }
+  };
+
+  const openChat = async (goal) => {
+    setDetailView("chat");
+    setChatLoading(true);
+    await loadMessages(goal.id);
+    setChatLoading(false);
+  };
+
+  // Poll for new messages every 5s while the chat is open.
+  useEffect(() => {
+    if (!detail || detailView !== "chat") return;
+    const id = setInterval(() => loadMessages(detail.id), 5000);
+    return () => clearInterval(id);
+  }, [detail?.id, detailView]);
+
+  const sendMessage = async () => {
+    const text = msgText.trim();
+    if (!text || !detail) return;
+    setSendingMsg(true);
+    try {
+      const res = await fetch(`${API_BASE}/send_shared_message.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, goal_id: detail.id, message: text }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setMsgText("");
+        setMessages(data.messages || []);
+      } else {
+        Alert.alert("Couldn't send", data.message || "Please try again.");
+      }
+    } catch (e) {
+      Alert.alert("Connection error", "Could not send the message. Please try again.");
+    }
+    setSendingMsg(false);
+  };
+
+  const closeDetail = () => {
+    setDetail(null);
+    setDetailView("info");
+    setMessages([]);
+    setMsgText("");
+  };
+
   /* ---------- render helpers ---------- */
 
   const initials = (fullName) =>
@@ -301,6 +378,8 @@ export default function SharedSavings() {
         onPress={() => {
           setAmount("");
           setMemberEmail("");
+          setDetailView("info");
+          setMessages([]);
           setDetail(goal);
         }}
         activeOpacity={0.75}
@@ -465,13 +544,102 @@ export default function SharedSavings() {
       </Modal>
 
       {/* ----- group detail modal ----- */}
-      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
+      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={closeDetail}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.detailBackdrop}
         >
-          <View style={styles.detailCard}>
-            {detail && (
+          <View style={[styles.detailCard, detailView === "chat" && styles.detailCardChat]}>
+            {detail && detailView === "chat" && (
+              <>
+                {/* ----- chat header ----- */}
+                <View style={styles.detailHandleRow}>
+                  <View style={styles.detailHandle} />
+                </View>
+                <View style={styles.detailHeadRow}>
+                  <TouchableOpacity
+                    onPress={() => setDetailView("info")}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ marginRight: 12 }}
+                  >
+                    <MaterialCommunityIcons name="arrow-left" size={26} color={colors.accent} />
+                  </TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailName} numberOfLines={1}>Group Chat</Text>
+                    <Text style={styles.goalDesc} numberOfLines={1}>{detail.name}</Text>
+                  </View>
+                  <TouchableOpacity onPress={closeDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <MaterialCommunityIcons name="close" size={24} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* ----- messages ----- */}
+                {chatLoading ? (
+                  <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 30, flex: 1 }} />
+                ) : (
+                  <ScrollView
+                    ref={chatScrollRef}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingVertical: 10 }}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+                  >
+                    {messages.length === 0 ? (
+                      <View style={styles.chatEmpty}>
+                        <MaterialCommunityIcons name="chat-outline" size={40} color={colors.textMuted} />
+                        <Text style={styles.chatEmptyText}>
+                          No messages yet — say hello to your group! 👋
+                        </Text>
+                      </View>
+                    ) : (
+                      messages.map((m) => {
+                        const mine = m.user_id === userId;
+                        return (
+                          <View key={m.id} style={[styles.bubbleRow, mine && styles.bubbleRowMine]}>
+                            <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+                              {!mine && <Text style={styles.bubbleName}>{m.name}</Text>}
+                              <Text style={mine ? styles.bubbleTextMine : styles.bubbleText}>
+                                {m.message}
+                              </Text>
+                              <Text style={[styles.bubbleTime, mine && styles.bubbleTimeMine]}>
+                                {fmtMsgTime(m.created_at)}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                )}
+
+                {/* ----- input ----- */}
+                <View style={styles.chatInputRow}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginBottom: 0, maxHeight: 90 }]}
+                    placeholder="Write a message..."
+                    placeholderTextColor={colors.textMuted}
+                    value={msgText}
+                    onChangeText={setMsgText}
+                    maxLength={500}
+                    multiline
+                  />
+                  <TouchableOpacity
+                    style={[styles.inviteSendBtn, (sendingMsg || !msgText.trim()) && { opacity: 0.5 }]}
+                    onPress={sendMessage}
+                    disabled={sendingMsg || !msgText.trim()}
+                  >
+                    {sendingMsg ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <MaterialCommunityIcons name="send" size={18} color="#fff" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {detail && detailView === "info" && (
               <>
                 <View style={styles.detailHandleRow}>
                   <View style={styles.detailHandle} />
@@ -490,7 +658,7 @@ export default function SharedSavings() {
                       {detailCompleted ? "Goal reached 🎉" : `${Math.round(detail.pct)}% of ${eur(detail.target_amount)}`}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => setDetail(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <TouchableOpacity onPress={closeDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <MaterialCommunityIcons name="close" size={24} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
@@ -512,6 +680,13 @@ export default function SharedSavings() {
                       {Math.round(detail.pct)}%
                     </Text>
                   </View>
+
+                  {/* group chat */}
+                  <TouchableOpacity style={styles.chatBtn} onPress={() => openChat(detail)}>
+                    <MaterialCommunityIcons name="chat-processing-outline" size={20} color={colors.accent} />
+                    <Text style={styles.chatBtnText}>Group Chat</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
 
                   {/* add money */}
                   {!detailCompleted && (
@@ -835,6 +1010,33 @@ const makeStyles = (c) =>
     detailHandle: { width: 44, height: 5, borderRadius: 3, backgroundColor: c.border },
     detailHeadRow: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
     detailName: { fontSize: 18, fontWeight: "800", color: c.text },
+
+    // Group chat
+    detailCardChat: { height: "80%" }, // fixed height so the chat fills the sheet
+    chatBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: c.surfaceAlt,
+      borderRadius: 14,
+      paddingVertical: 13,
+      paddingHorizontal: 16,
+      marginTop: 16,
+    },
+    chatBtnText: { flex: 1, fontSize: 14.5, fontWeight: "700", color: c.accent },
+    chatEmpty: { alignItems: "center", paddingVertical: 40, paddingHorizontal: 30 },
+    chatEmptyText: { color: c.textMuted, textAlign: "center", marginTop: 10, lineHeight: 19 },
+    bubbleRow: { flexDirection: "row", marginBottom: 10, paddingRight: 44 },
+    bubbleRowMine: { justifyContent: "flex-end", paddingRight: 0, paddingLeft: 44 },
+    bubble: { borderRadius: 16, paddingVertical: 9, paddingHorizontal: 13 },
+    bubbleOther: { backgroundColor: c.surfaceAlt, borderBottomLeftRadius: 5 },
+    bubbleMine: { backgroundColor: c.primary, borderBottomRightRadius: 5 },
+    bubbleName: { fontSize: 11.5, fontWeight: "800", color: c.accent, marginBottom: 3 },
+    bubbleText: { fontSize: 14, color: c.text, lineHeight: 19 },
+    bubbleTextMine: { fontSize: 14, color: "#fff", lineHeight: 19 },
+    bubbleTime: { fontSize: 10, color: c.textMuted, marginTop: 4, alignSelf: "flex-end" },
+    bubbleTimeMine: { color: "#C9CEE8" },
+    chatInputRow: { flexDirection: "row", alignItems: "flex-end", gap: 10, paddingTop: 10 },
 
     addBox: {
       backgroundColor: c.surfaceAlt,

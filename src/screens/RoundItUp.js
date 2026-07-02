@@ -32,6 +32,9 @@ export default function RoundItUp() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // Demo toggle: lives only while the screen is open (nothing is persisted).
+  const [automatic, setAutomatic] = useState(false);
+
   const loadData = async () => {
     try {
       const stored = JSON.parse(await AsyncStorage.getItem("user"));
@@ -157,6 +160,26 @@ export default function RoundItUp() {
           {t("roundup.helper")}
         </Text>
 
+        <TouchableOpacity
+          style={[styles.autoBtn, automatic && styles.autoBtnOn]}
+          onPress={() => setAutomatic((a) => !a)}
+          activeOpacity={0.8}
+        >
+          <MaterialCommunityIcons
+            name={automatic ? "check-circle" : "autorenew"}
+            size={20}
+            color={automatic ? "#fff" : colors.accent}
+          />
+          <Text style={[styles.autoBtnText, automatic && styles.autoBtnTextOn]}>
+            {automatic ? "Round It Up is Automatic ✓" : "Make Round It Up Automatic"}
+          </Text>
+        </TouchableOpacity>
+        {automatic && (
+          <Text style={styles.autoHint}>
+            Every card purchase will now be rounded up and the difference saved automatically.
+          </Text>
+        )}
+
         <View style={styles.card}>
           <Text style={styles.label}>{t("roundup.purchaseAmount")}</Text>
           <TextInput
@@ -245,6 +268,29 @@ const makeStyles = (c) =>
     savingsBannerValue: { color: "#fff", fontSize: 22, fontWeight: "bold", marginTop: 2 },
 
     helper: { fontSize: 13, color: c.textSecondary, marginBottom: 18, lineHeight: 19 },
+
+    autoBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      borderWidth: 1.5,
+      borderColor: c.accent,
+      backgroundColor: c.card,
+      borderRadius: 16,
+      paddingVertical: 14,
+      marginBottom: 18,
+    },
+    autoBtnOn: { backgroundColor: c.success, borderColor: c.success },
+    autoBtnText: { color: c.accent, fontWeight: "700", fontSize: 14.5 },
+    autoBtnTextOn: { color: "#fff" },
+    autoHint: {
+      fontSize: 12,
+      color: c.success,
+      marginTop: -8,
+      marginBottom: 18,
+      textAlign: "center",
+    },
 
     card: {
       backgroundColor: c.card,

@@ -1,6 +1,7 @@
-import React, { useMemo } from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useMemo, useState, useRef, useEffect } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
@@ -10,6 +11,36 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
   const { t } = useLanguage();
   const { format } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Hide/show the balance like real banking apps (screen-local, not persisted).
+  const [hidden, setHidden] = useState(false);
+
+  // "Account number copied" confirmation pill.
+  const [copied, setCopied] = useState(false);
+  const copiedAnim = useRef(new Animated.Value(0)).current;
+  const copiedTimer = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
+  const copyAccountNumber = async () => {
+    try {
+      await Clipboard.setStringAsync(String(cardNumber || ""));
+    } catch (e) {
+      return; // clipboard unavailable — fail silently
+    }
+    setCopied(true);
+    Animated.timing(copiedAnim, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => {
+      Animated.timing(copiedAnim, { toValue: 0, duration: 250, useNativeDriver: true }).start(
+        () => setCopied(false)
+      );
+    }, 1800);
+  };
 
   return (
     <View style={styles.container}>
@@ -24,14 +55,38 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
 
         <View style={styles.balanceContainer}>
           <Text style={styles.balance}>
-            {format(balance)}
+            {hidden ? "••••••••" : format(balance)}
           </Text>
-          <MaterialCommunityIcons name="eye-off-outline" size={20} color={colors.accent} />
+          <TouchableOpacity
+            onPress={() => setHidden((h) => !h)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialCommunityIcons
+              name={hidden ? "eye-outline" : "eye-off-outline"}
+              size={20}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.ibanText}>
-          {formatCardNumber(cardNumber)}
-        </Text>
+        <TouchableOpacity
+          style={styles.ibanRow}
+          onPress={copyAccountNumber}
+          activeOpacity={0.6}
+          hitSlop={{ top: 6, bottom: 6 }}
+        >
+          <Text style={styles.ibanText}>
+            {formatCardNumber(cardNumber)}
+          </Text>
+          <MaterialCommunityIcons name="content-copy" size={15} color={colors.accent} />
+        </TouchableOpacity>
+
+        {copied && (
+          <Animated.View style={[styles.copiedPill, { opacity: copiedAnim }]}>
+            <MaterialCommunityIcons name="check-circle" size={14} color="#fff" />
+            <Text style={styles.copiedText}>Account number copied</Text>
+          </Animated.View>
+        )}
 
         <View style={styles.buttonsRow}>
         <TouchableOpacity
@@ -79,7 +134,32 @@ const makeStyles = (c) =>
     balanceContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
 
     balance: { fontSize: 28, fontWeight: "bold", marginRight: 10, color: c.accent },
-    ibanText: { fontSize: 14, color: c.accent, marginBottom: 20 },
+
+    ibanRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 20,
+      alignSelf: "flex-start",
+    },
+    ibanText: { fontSize: 14, color: c.accent },
+
+    copiedPill: {
+      position: "absolute", // floats over the card so the layout never jumps
+      bottom: 74,
+      alignSelf: "center",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: c.success,
+      borderRadius: 20,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      elevation: 6,
+      zIndex: 10,
+    },
+    copiedText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+
     buttonsRow: { flexDirection: "row", gap: 10 },
 
     button: {

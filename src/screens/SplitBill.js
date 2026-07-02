@@ -1,3 +1,15 @@
+// Split The Bill — two ways to split:
+//
+//   1. "With a Friend" (real request system): type your friend's DS Banking
+//      email (verified server-side, like Shared Savings invites — no user
+//      list is ever shown), enter the total + an optional note and send a
+//      request. The friend sees it here (and gets a notification) and can
+//      Accept — their half is deducted and credited to you — or Decline (no
+//      money moves). All real PHP + MySQL (split_requests table).
+//
+//   2. "Instant Split": the original calculator that just pays your share of
+//      a bill split between N people.
+
 import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
@@ -8,6 +20,7 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -17,6 +30,15 @@ import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 
+const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
+const GREEN = "#2E7D32";
+
+const STATUS_META = {
+  pending: { label: "Pending", icon: "clock-outline" },
+  accepted: { label: "Accepted", icon: "check-circle-outline" },
+  declined: { label: "Declined", icon: "close-circle-outline" },
+};
+
 export default function SplitBill() {
   const navigation = useNavigation();
   const { colors } = useTheme();
@@ -25,36 +47,172 @@ export default function SplitBill() {
 
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
+  const [tab, setTab] = useState("friend"); // 'friend' | 'instant'
+  const [refreshing, setRefreshing] = useState(false);
 
+  // ----- friend request state -----
+  const [incoming, setIncoming] = useState([]);
+  const [sent, setSent] = useState([]);
+  const [friendEmail, setFriendEmail] = useState("");
+  const [reqTotal, setReqTotal] = useState("");
+  const [reqNote, setReqNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [busyRequest, setBusyRequest] = useState(null); // request id being answered
+
+  // ----- instant split state (the original calculator) -----
   const [total, setTotal] = useState("");
   const [people, setPeople] = useState(2);
   const [label, setLabel] = useState("");
-
   const [submitting, setSubmitting] = useState(false);
 
-  // Refresh the user + current balance whenever the screen is focused.
+  const load = async (quiet = false) => {
+    try {
+      const stored = JSON.parse(await AsyncStorage.getItem("user"));
+      if (!stored) return;
+      setUser(stored);
+
+      const [cardRes, splitRes] = await Promise.all([
+        fetch(`${API_BASE}/get_card.php?user_id=${stored.user_id}`),
+        fetch(`${API_BASE}/get_split_requests.php?user_id=${stored.user_id}`),
+      ]);
+
+      const card = await cardRes.json();
+      if (card.status === "success") {
+        setBalance(Number(card.card.balance) || 0);
+      } else {
+        setBalance(Number(stored.balance) || 0);
+      }
+
+      const split = await splitRes.json();
+      if (split.status === "success") {
+        setIncoming(split.incoming || []);
+        setSent(split.sent || []);
+      }
+    } catch (err) {
+      if (!quiet) console.log("SplitBill load error:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
-      const load = async () => {
-        try {
-          const stored = JSON.parse(await AsyncStorage.getItem("user"));
-          if (!stored) return;
-          setUser(stored);
-
-          const res = await fetch(`${API_BASE}/get_card.php?user_id=${stored.user_id}`);
-          const data = await res.json();
-          if (data.status === "success") {
-            setBalance(Number(data.card.balance) || 0);
-          } else {
-            setBalance(Number(stored.balance) || 0);
-          }
-        } catch (err) {
-          console.log("SplitBill load error:", err);
-        }
-      };
       load();
     }, [])
   );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    load(true);
+  };
+
+  const updateStoredBalance = async (newBalance) => {
+    setBalance(newBalance);
+    const updatedUser = { ...user, balance: newBalance };
+    await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
+  /* ---------- send a request to a friend ---------- */
+
+  const reqTotalNum = parseFloat(String(reqTotal).replace(",", ".")) || 0;
+  const reqShare = reqTotalNum > 0 ? reqTotalNum / 2 : 0;
+
+  const sendRequest = async () => {
+    const email = friendEmail.trim();
+    if (!email) {
+      Alert.alert("Missing email", "Enter the DS Banking email of the friend you want to split with.");
+      return;
+    }
+    if (reqTotalNum <= 0) {
+      Alert.alert(t("common.error"), t("split.invalidAmount"));
+      return;
+    }
+    setSending(true);
+    try {
+      const res = await fetch(`${API_BASE}/create_split_request.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.user_id,
+          email,
+          total: reqTotalNum,
+          note: reqNote.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        Alert.alert(
+          "Request sent ✉️",
+          `${data.friend_name} was asked to pay ${eur(data.share)} — half of ${eur(reqTotalNum)}. You'll get a notification when they respond.`
+        );
+        setFriendEmail("");
+        setReqTotal("");
+        setReqNote("");
+        load(true);
+      } else {
+        Alert.alert(t("common.error"), data.message || t("common.somethingWrong"));
+      }
+    } catch (err) {
+      Alert.alert(t("common.error"), t("notif.couldNotReach"));
+    }
+    setSending(false);
+  };
+
+  /* ---------- answer an incoming request ---------- */
+
+  const respond = async (req, accept) => {
+    setBusyRequest(req.id);
+    try {
+      const res = await fetch(`${API_BASE}/respond_split_request.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user.user_id, request_id: req.id, accept }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        if (accept) {
+          if (data.new_balance !== null && data.new_balance !== undefined) {
+            await updateStoredBalance(Number(data.new_balance));
+          }
+          Alert.alert(
+            "Share paid ✓",
+            `You paid ${eur(req.share_amount)} to ${req.requester_name}. It's in your transaction history.`
+          );
+        }
+        load(true);
+      } else {
+        Alert.alert(t("common.error"), data.message || t("common.somethingWrong"));
+      }
+    } catch (err) {
+      Alert.alert(t("common.error"), t("notif.couldNotReach"));
+    }
+    setBusyRequest(null);
+  };
+
+  const confirmRespond = (req, accept) => {
+    if (accept) {
+      Alert.alert(
+        "Pay your share?",
+        `${eur(req.share_amount)} will be sent to ${req.requester_name}${req.note ? ` for "${req.note}"` : ""}.`,
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          { text: "Pay " + eur(req.share_amount), onPress: () => respond(req, true) },
+        ]
+      );
+    } else {
+      Alert.alert(
+        "Decline request?",
+        `${req.requester_name} will be told you declined. No money will move.`,
+        [
+          { text: t("common.cancel"), style: "cancel" },
+          { text: "Decline", style: "destructive", onPress: () => respond(req, false) },
+        ]
+      );
+    }
+  };
+
+  /* ---------- instant split (unchanged behaviour) ---------- */
 
   const totalNum = parseFloat(total) || 0;
   const share = people >= 2 && totalNum > 0 ? totalNum / people : 0;
@@ -92,11 +250,7 @@ export default function SplitBill() {
       const data = await res.json();
 
       if (data.status === "success") {
-        setBalance(data.new_balance);
-        const updatedUser = { ...user, balance: data.new_balance };
-        await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
-        setUser(updatedUser);
-
+        await updateStoredBalance(data.new_balance);
         Alert.alert(
           t("split.doneTitle"),
           t("split.doneMsg", { desc: data.description, share: Number(data.share).toFixed(2) }),
@@ -113,6 +267,75 @@ export default function SplitBill() {
       Alert.alert(t("common.error"), t("notif.couldNotReach"));
     }
     setSubmitting(false);
+  };
+
+  /* ---------- render helpers ---------- */
+
+  const initials = (fullName) =>
+    String(fullName || "")
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0].toUpperCase())
+      .join("");
+
+  const renderIncoming = (req) => (
+    <View key={req.id} style={styles.requestCard}>
+      <View style={styles.reqHead}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{initials(req.requester_name)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.reqName} numberOfLines={1}>{req.requester_name}</Text>
+          <Text style={styles.reqSub} numberOfLines={1}>
+            {req.note ? `"${req.note}" · ` : ""}total {eur(req.total_amount)}
+          </Text>
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={styles.reqShare}>{eur(req.share_amount)}</Text>
+          <Text style={styles.reqShareLabel}>your share</Text>
+        </View>
+      </View>
+      {busyRequest === req.id ? (
+        <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 12 }} />
+      ) : (
+        <View style={styles.reqBtns}>
+          <TouchableOpacity style={styles.acceptBtn} onPress={() => confirmRespond(req, true)}>
+            <MaterialCommunityIcons name="check" size={17} color="#fff" />
+            <Text style={styles.acceptText}>Accept</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.declineBtn} onPress={() => confirmRespond(req, false)}>
+            <MaterialCommunityIcons name="close" size={17} color={colors.dangerText} />
+            <Text style={styles.declineText}>Decline</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderSent = (req) => {
+    const meta = STATUS_META[req.status] || STATUS_META.pending;
+    const statusColor =
+      req.status === "accepted" ? GREEN : req.status === "declined" ? colors.dangerText : colors.warning;
+    return (
+      <View key={req.id} style={styles.sentRow}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{initials(req.friend_name)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.reqName} numberOfLines={1}>{req.friend_name}</Text>
+          <Text style={styles.reqSub} numberOfLines={1}>
+            {req.note ? `"${req.note}" · ` : ""}
+            {eur(req.total_amount)} · asked for {eur(req.share_amount)} ·{" "}
+            {new Date(req.created_at.replace(" ", "T")).toLocaleDateString("de-DE")}
+          </Text>
+        </View>
+        <View style={[styles.statusPill, { borderColor: statusColor }]}>
+          <MaterialCommunityIcons name={meta.icon} size={13} color={statusColor} />
+          <Text style={[styles.statusPillText, { color: statusColor }]}>{meta.label}</Text>
+        </View>
+      </View>
+    );
   };
 
   if (!user) {
@@ -133,87 +356,210 @@ export default function SplitBill() {
         <View style={{ width: 28 }} />
       </View>
 
+      {/* mode switch */}
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === "friend" && styles.tabBtnActive]}
+          onPress={() => setTab("friend")}
+        >
+          <MaterialCommunityIcons
+            name="account-multiple-outline"
+            size={17}
+            color={tab === "friend" ? "#fff" : colors.accent}
+          />
+          <Text style={[styles.tabText, tab === "friend" && styles.tabTextActive]}>With a Friend</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === "instant" && styles.tabBtnActive]}
+          onPress={() => setTab("instant")}
+        >
+          <MaterialCommunityIcons
+            name="flash-outline"
+            size={17}
+            color={tab === "instant" ? "#fff" : colors.accent}
+          />
+          <Text style={[styles.tabText, tab === "instant" && styles.tabTextActive]}>Instant Split</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
       >
         <View style={styles.balanceRow}>
           <Text style={styles.balanceLabel}>{t("split.availableBalance")}</Text>
           <Text style={styles.balanceValue}>{Number(balance).toFixed(2)} EUR</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>{t("split.totalBill")}</Text>
-          <TextInput
-            style={styles.amountInput}
-            keyboardType="numeric"
-            placeholder="0.00 EUR"
-            placeholderTextColor={colors.placeholder}
-            value={total}
-            onChangeText={setTotal}
-          />
+        {tab === "friend" ? (
+          <>
+            {/* ----- requests waiting for my answer ----- */}
+            {incoming.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Requests for you ({incoming.length})</Text>
+                {incoming.map(renderIncoming)}
+              </>
+            )}
 
-          <Text style={styles.label}>{t("split.whatFor")}</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder={t("split.egDinner")}
-            placeholderTextColor={colors.placeholder}
-            value={label}
-            onChangeText={setLabel}
-          />
+            {/* ----- new request form ----- */}
+            <Text style={styles.sectionTitle}>Split a bill with a friend</Text>
+            <View style={styles.card}>
+              <Text style={styles.label}>FRIEND'S DS BANKING EMAIL</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="friend@email.com"
+                placeholderTextColor={colors.placeholder}
+                value={friendEmail}
+                onChangeText={setFriendEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+              <Text style={styles.emailHint}>
+                We'll check the account exists before the request is sent.
+              </Text>
 
-          <Text style={styles.label}>{t("split.numberOfPeople")}</Text>
-          <View style={styles.stepperRow}>
+              <Text style={styles.label}>{t("split.totalBill")}</Text>
+              <TextInput
+                style={styles.amountInput}
+                keyboardType="numeric"
+                placeholder="0.00 EUR"
+                placeholderTextColor={colors.placeholder}
+                value={reqTotal}
+                onChangeText={setReqTotal}
+              />
+
+              <Text style={styles.label}>NOTE (OPTIONAL)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder={t("split.egDinner")}
+                placeholderTextColor={colors.placeholder}
+                value={reqNote}
+                onChangeText={setReqNote}
+                maxLength={80}
+              />
+
+              {reqTotalNum > 0 && (
+                <View style={styles.halfRow}>
+                  <View style={styles.halfBox}>
+                    <Text style={styles.halfLabel}>You pay</Text>
+                    <Text style={styles.halfValue}>{eur(reqShare)}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="call-split" size={22} color={colors.textMuted} />
+                  <View style={styles.halfBox}>
+                    <Text style={styles.halfLabel} numberOfLines={1}>Your friend pays</Text>
+                    <Text style={styles.halfValue}>{eur(reqShare)}</Text>
+                  </View>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.confirmBtn, sending && { opacity: 0.7 }]}
+                onPress={sendRequest}
+                disabled={sending}
+              >
+                {sending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="send" size={18} color="#fff" />
+                    <Text style={styles.confirmText}>  Send Request</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.formHint}>
+                Nothing is charged now — your friend pays their half only if they accept.
+              </Text>
+            </View>
+
+            {/* ----- requests I sent ----- */}
+            {sent.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Your requests</Text>
+                <View style={styles.sentCard}>{sent.map(renderSent)}</View>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {/* ----- the original instant split calculator ----- */}
+            <View style={styles.card}>
+              <Text style={styles.label}>{t("split.totalBill")}</Text>
+              <TextInput
+                style={styles.amountInput}
+                keyboardType="numeric"
+                placeholder="0.00 EUR"
+                placeholderTextColor={colors.placeholder}
+                value={total}
+                onChangeText={setTotal}
+              />
+
+              <Text style={styles.label}>{t("split.whatFor")}</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder={t("split.egDinner")}
+                placeholderTextColor={colors.placeholder}
+                value={label}
+                onChangeText={setLabel}
+              />
+
+              <Text style={styles.label}>{t("split.numberOfPeople")}</Text>
+              <View style={styles.stepperRow}>
+                <TouchableOpacity
+                  style={[styles.stepBtn, people <= 2 && styles.stepBtnDisabled]}
+                  onPress={() => changePeople(-1)}
+                  disabled={people <= 2}
+                >
+                  <MaterialCommunityIcons name="minus" size={24} color="#fff" />
+                </TouchableOpacity>
+
+                <Text style={styles.peopleCount}>{people}</Text>
+
+                <TouchableOpacity style={styles.stepBtn} onPress={() => changePeople(1)}>
+                  <MaterialCommunityIcons name="plus" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>{t("split.eachOwes")}</Text>
+              <Text style={styles.summaryAmount}>{share.toFixed(2)} EUR</Text>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryLine}>
+                <Text style={styles.summaryLineLabel}>{t("split.sTotal")}</Text>
+                <Text style={styles.summaryLineValue}>{totalNum.toFixed(2)} EUR</Text>
+              </View>
+              <View style={styles.summaryLine}>
+                <Text style={styles.summaryLineLabel}>{t("split.sSplitBetween")}</Text>
+                <Text style={styles.summaryLineValue}>{t("split.peopleCount", { count: people })}</Text>
+              </View>
+              <View style={styles.summaryLine}>
+                <Text style={[styles.summaryLineLabel, { fontWeight: "700", color: colors.accent }]}>
+                  {t("split.yourShare")}
+                </Text>
+                <Text style={[styles.summaryLineValue, { fontWeight: "700", color: colors.accent }]}>
+                  {share.toFixed(2)} EUR
+                </Text>
+              </View>
+            </View>
+
             <TouchableOpacity
-              style={[styles.stepBtn, people <= 2 && styles.stepBtnDisabled]}
-              onPress={() => changePeople(-1)}
-              disabled={people <= 2}
+              style={[styles.confirmBtn, submitting && { opacity: 0.7 }]}
+              onPress={handleConfirm}
+              disabled={submitting}
             >
-              <MaterialCommunityIcons name="minus" size={24} color="#fff" />
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.confirmText}>{t("split.payShare")}</Text>
+              )}
             </TouchableOpacity>
-
-            <Text style={styles.peopleCount}>{people}</Text>
-
-            <TouchableOpacity style={styles.stepBtn} onPress={() => changePeople(1)}>
-              <MaterialCommunityIcons name="plus" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>{t("split.eachOwes")}</Text>
-          <Text style={styles.summaryAmount}>{share.toFixed(2)} EUR</Text>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryLine}>
-            <Text style={styles.summaryLineLabel}>{t("split.sTotal")}</Text>
-            <Text style={styles.summaryLineValue}>{totalNum.toFixed(2)} EUR</Text>
-          </View>
-          <View style={styles.summaryLine}>
-            <Text style={styles.summaryLineLabel}>{t("split.sSplitBetween")}</Text>
-            <Text style={styles.summaryLineValue}>{t("split.peopleCount", { count: people })}</Text>
-          </View>
-          <View style={styles.summaryLine}>
-            <Text style={[styles.summaryLineLabel, { fontWeight: "700", color: colors.accent }]}>
-              {t("split.yourShare")}
-            </Text>
-            <Text style={[styles.summaryLineValue, { fontWeight: "700", color: colors.accent }]}>
-              {share.toFixed(2)} EUR
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.confirmBtn, submitting && { opacity: 0.7 }]}
-          onPress={handleConfirm}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.confirmText}>{t("split.payShare")}</Text>
-          )}
-        </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
+
     </SafeAreaView>
   );
 }
@@ -233,14 +579,39 @@ const makeStyles = (c) =>
     },
     headerTitle: { color: "#fff", fontSize: 18, fontWeight: "600" },
 
+    tabs: {
+      flexDirection: "row",
+      marginHorizontal: 20,
+      marginTop: 16,
+      backgroundColor: c.card,
+      borderRadius: 14,
+      padding: 5,
+      elevation: 2,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 4,
+    },
+    tabBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    tabBtnActive: { backgroundColor: c.primary },
+    tabText: { color: c.accent, fontWeight: "700", fontSize: 13.5 },
+    tabTextActive: { color: "#fff" },
+
     body: { padding: 20, paddingBottom: 50 },
 
-    balanceRow: {
-      alignItems: "center",
-      marginBottom: 20,
-    },
+    balanceRow: { alignItems: "center", marginBottom: 6 },
     balanceLabel: { fontSize: 12, color: c.textSecondary, letterSpacing: 1 },
     balanceValue: { fontSize: 22, fontWeight: "bold", color: c.accent, marginTop: 4 },
+
+    sectionTitle: { fontSize: 16, fontWeight: "700", color: c.text, marginTop: 18, marginBottom: 10 },
 
     card: {
       backgroundColor: c.card,
@@ -279,6 +650,109 @@ const makeStyles = (c) =>
       color: c.text,
     },
 
+    emailHint: { fontSize: 11.5, color: c.textMuted, marginTop: 7 },
+
+    avatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: c.surfaceAlt,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 12,
+    },
+    avatarText: { fontSize: 14, fontWeight: "800", color: c.accent },
+
+    halfRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      marginTop: 20,
+    },
+    halfBox: {
+      flex: 1,
+      backgroundColor: c.surfaceAlt,
+      borderRadius: 14,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    halfLabel: { fontSize: 12, color: c.textSecondary },
+    halfValue: { fontSize: 18, fontWeight: "800", color: c.accent, marginTop: 3 },
+
+    formHint: { fontSize: 12, color: c.textMuted, textAlign: "center", marginTop: 12, lineHeight: 17 },
+
+    // incoming request cards
+    requestCard: {
+      backgroundColor: c.card,
+      borderRadius: 18,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1.5,
+      borderColor: c.accent,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.07,
+      shadowRadius: 6,
+    },
+    reqHead: { flexDirection: "row", alignItems: "center" },
+    reqName: { fontSize: 15, fontWeight: "700", color: c.text },
+    reqSub: { fontSize: 12, color: c.textMuted, marginTop: 2 },
+    reqShare: { fontSize: 17, fontWeight: "800", color: c.accent },
+    reqShareLabel: { fontSize: 10.5, color: c.textMuted, marginTop: 1 },
+    reqBtns: { flexDirection: "row", gap: 10, marginTop: 14 },
+    acceptBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      backgroundColor: GREEN,
+      borderRadius: 12,
+      paddingVertical: 12,
+    },
+    acceptText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+    declineBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      backgroundColor: "transparent",
+      borderWidth: 1.5,
+      borderColor: c.danger,
+      borderRadius: 12,
+      paddingVertical: 12,
+    },
+    declineText: { color: c.dangerText, fontWeight: "700", fontSize: 14 },
+
+    // sent request rows
+    sentCard: {
+      backgroundColor: c.card,
+      borderRadius: 18,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.07,
+      shadowRadius: 6,
+    },
+    sentRow: { flexDirection: "row", alignItems: "center", paddingVertical: 11 },
+    statusPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderWidth: 1.2,
+      borderRadius: 20,
+      paddingVertical: 4,
+      paddingHorizontal: 9,
+      marginLeft: 8,
+    },
+    statusPillText: { fontSize: 11.5, fontWeight: "700" },
+
+    // instant split
     stepperRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -332,11 +806,13 @@ const makeStyles = (c) =>
     summaryLineValue: { fontSize: 14, color: c.text, fontWeight: "500" },
 
     confirmBtn: {
+      flexDirection: "row",
       backgroundColor: c.primary,
       paddingVertical: 18,
       borderRadius: 16,
       marginTop: 25,
       alignItems: "center",
+      justifyContent: "center",
     },
     confirmText: { color: "#fff", fontWeight: "600", fontSize: 16, letterSpacing: 0.5 },
   });

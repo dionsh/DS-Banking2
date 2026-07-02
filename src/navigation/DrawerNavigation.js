@@ -37,6 +37,8 @@ import AICoach from "../screens/AICoach";
 import InvestSimulator from "../screens/InvestSimulator";
 import BudgetPlanner from "../screens/BudgetPlanner";
 import SharedSavings from "../screens/SharedSavings";
+import FinancialHealth from "../screens/FinancialHealth";
+import Travel from "../screens/Travel";
 
 const Drawer = createDrawerNavigator();
 
@@ -103,6 +105,17 @@ export default function DrawerNavigation() {
           drawerLabel: "AI Coach",
           drawerIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="robot-happy-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Financial Health"
+        component={FinancialHealth}
+        options={{
+          drawerLabel: "Financial Health",
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="heart-pulse" color={color} size={size} />
           ),
         }}
       />
@@ -235,6 +248,17 @@ export default function DrawerNavigation() {
           drawerLabel: t("menu.atmLocations"),
           drawerIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="map-marker-radius" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Travel"
+        component={Travel}
+        options={{
+          drawerLabel: "Travel",
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="airplane" color={color} size={size} />
           ),
         }}
       />
