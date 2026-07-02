@@ -48,7 +48,8 @@
         {
           "microphonePermission": "Allow DS Banking to use the microphone so you can talk to NOVA."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {
