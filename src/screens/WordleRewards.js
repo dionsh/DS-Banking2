@@ -6,6 +6,8 @@ import {
   StyleSheet,
   Alert,
   Dimensions,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -80,6 +82,7 @@ export default function WordleRewards() {
   const [current, setCurrent] = useState("");
   const [status, setStatus] = useState("playing"); // playing | won | lost
   const [rewardMsg, setRewardMsg] = useState("");
+  const [infoVisible, setInfoVisible] = useState(false);
   const rewardingRef = useRef(false);
 
   const newGame = useCallback(() => {
@@ -237,9 +240,14 @@ export default function WordleRewards() {
           <MaterialCommunityIcons name="menu" size={28} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("menu.wordleRewards")}</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("Rewards")}>
-          <MaterialCommunityIcons name="trophy-outline" size={26} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={() => setInfoVisible(true)}>
+            <MaterialCommunityIcons name="information-outline" size={25} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate("Rewards")}>
+            <MaterialCommunityIcons name="trophy-outline" size={26} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.body}>
@@ -315,6 +323,115 @@ export default function WordleRewards() {
           </View>
         )}
       </View>
+
+      {/* ----- how-to-play modal ----- */}
+      <Modal
+        visible={infoVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setInfoVisible(false)}
+      >
+        <View style={styles.infoBackdrop}>
+          <View style={styles.infoCard}>
+            <View style={styles.infoHead}>
+              <Text style={styles.infoTitle}>How to Play</Text>
+              <TouchableOpacity
+                onPress={() => setInfoVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <MaterialCommunityIcons name="close" size={24} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.infoText}>
+                Guess the hidden 5-letter word in {MAX_ATTEMPTS} tries. After each guess, the
+                tiles change color to show how close you are:
+              </Text>
+
+              {/* Green example */}
+              <View style={styles.exampleRow}>
+                {"MONEY".split("").map((ch, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.exampleTile,
+                      i === 0
+                        ? { backgroundColor: GREEN, borderColor: GREEN }
+                        : { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.exampleTileText, { color: i === 0 ? "#fff" : colors.text }]}>
+                      {ch}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.infoText}>
+                🟩 <Text style={styles.infoBold}>Green</Text> — the letter M is in the word and in
+                the correct position.
+              </Text>
+
+              {/* Yellow example */}
+              <View style={styles.exampleRow}>
+                {"SAVED".split("").map((ch, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.exampleTile,
+                      i === 1
+                        ? { backgroundColor: YELLOW, borderColor: YELLOW }
+                        : { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.exampleTileText, { color: i === 1 ? "#fff" : colors.text }]}>
+                      {ch}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.infoText}>
+                🟨 <Text style={styles.infoBold}>Yellow</Text> — the letter A is in the word but in
+                the wrong position.
+              </Text>
+
+              {/* Grey example */}
+              <View style={styles.exampleRow}>
+                {"TRUST".split("").map((ch, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.exampleTile,
+                      i === 2
+                        ? { backgroundColor: GRAY, borderColor: GRAY }
+                        : { backgroundColor: colors.card, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.exampleTileText, { color: i === 2 ? "#fff" : colors.text }]}>
+                      {ch}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.infoText}>
+                ⬜ <Text style={styles.infoBold}>Grey</Text> — the letter U does not exist in the
+                word at all.
+              </Text>
+
+              <View style={styles.infoDivider} />
+
+              <Text style={styles.infoText}>
+                🏆 Win to earn reward points — the fewer attempts you need, the more points you
+                get. 100 points = €1, redeemable to your balance on the Rewards screen.
+              </Text>
+            </ScrollView>
+
+            <TouchableOpacity style={styles.infoGotIt} onPress={() => setInfoVisible(false)}>
+              <Text style={styles.infoGotItText}>Got it!</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -333,6 +450,7 @@ const makeStyles = (c) =>
       paddingBottom: 18,
     },
     headerTitle: { color: "#fff", fontSize: 18, fontWeight: "600" },
+    headerRight: { flexDirection: "row", alignItems: "center", gap: 14 },
 
     body: { flex: 1, alignItems: "center", paddingTop: 10 },
     subtitle: { fontSize: 13, color: c.textSecondary, marginBottom: 14, textAlign: "center", paddingHorizontal: 20 },
@@ -395,4 +513,47 @@ const makeStyles = (c) =>
       borderRadius: 14,
     },
     rewardsBtnText: { color: c.accent, fontWeight: "600", fontSize: 15 },
+
+    // How-to-play modal
+    infoBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      paddingHorizontal: 24,
+    },
+    infoCard: {
+      backgroundColor: c.card,
+      borderRadius: 22,
+      padding: 22,
+      maxHeight: "82%",
+    },
+    infoHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    infoTitle: { fontSize: 20, fontWeight: "800", color: c.text },
+    infoText: { fontSize: 14, color: c.textSecondary, lineHeight: 21, marginBottom: 10 },
+    infoBold: { fontWeight: "800", color: c.text },
+    exampleRow: { flexDirection: "row", marginTop: 6, marginBottom: 8 },
+    exampleTile: {
+      width: 40,
+      height: 40,
+      borderWidth: 2,
+      marginRight: 5,
+      justifyContent: "center",
+      alignItems: "center",
+      borderRadius: 6,
+    },
+    exampleTileText: { fontSize: 19, fontWeight: "bold" },
+    infoDivider: { height: 1, backgroundColor: c.divider, marginVertical: 10 },
+    infoGotIt: {
+      backgroundColor: c.primary,
+      borderRadius: 14,
+      paddingVertical: 14,
+      alignItems: "center",
+      marginTop: 12,
+    },
+    infoGotItText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   });

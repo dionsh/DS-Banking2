@@ -35,6 +35,8 @@ import Subscriptions from "../screens/Subscriptions";
 import Analytics from "../screens/Analytics";
 import AICoach from "../screens/AICoach";
 import InvestSimulator from "../screens/InvestSimulator";
+import BudgetPlanner from "../screens/BudgetPlanner";
+import SharedSavings from "../screens/SharedSavings";
 
 const Drawer = createDrawerNavigator();
 
@@ -101,6 +103,28 @@ export default function DrawerNavigation() {
           drawerLabel: "AI Coach",
           drawerIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="robot-happy-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Budget Planner"
+        component={BudgetPlanner}
+        options={{
+          drawerLabel: "Budget Planner",
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="wallet-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Shared Savings"
+        component={SharedSavings}
+        options={{
+          drawerLabel: "Shared Savings",
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-group-outline" color={color} size={size} />
           ),
         }}
       />

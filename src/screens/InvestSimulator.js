@@ -163,9 +163,14 @@ export default function InvestSimulator() {
         <MaterialCommunityIcons name="menu" size={28} color="#fff" />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Invest Simulator</Text>
-      <TouchableOpacity onPress={confirmReset}>
-        <MaterialCommunityIcons name="restart" size={24} color="#fff" />
-      </TouchableOpacity>
+      <View style={styles.headerRight}>
+        <TouchableOpacity onPress={() => navigation.navigate("InvestLeaderboard")}>
+          <MaterialCommunityIcons name="trophy-outline" size={24} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={confirmReset}>
+          <MaterialCommunityIcons name="restart" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -311,9 +316,17 @@ export default function InvestSimulator() {
               <MaterialCommunityIcons name={asset.icon} size={24} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.assetName}>
-                {asset.name} <Text style={styles.assetSymbol}>{asset.symbol}</Text>
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={styles.assetName}>
+                  {asset.name} <Text style={styles.assetSymbol}>{asset.symbol}</Text>
+                </Text>
+                {asset.live && (
+                  <View style={styles.liveBadge}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveText}>LIVE</Text>
+                  </View>
+                )}
+              </View>
               <AnimatedNumber value={asset.price} format={money} style={styles.assetPrice} />
             </View>
             <View
@@ -472,8 +485,8 @@ export default function InvestSimulator() {
         )}
 
         <Text style={styles.footNote}>
-          Prices are simulated for learning purposes and do not reflect real markets. This is not
-          investment advice.
+          Bitcoin uses the real live market price (via CoinGecko). Other assets are simulated for
+          learning purposes and do not reflect real markets. This is not investment advice.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -494,6 +507,20 @@ const makeStyles = (c) =>
       paddingBottom: 18,
     },
     headerTitle: { color: "#fff", fontSize: 18, fontWeight: "600" },
+    headerRight: { flexDirection: "row", alignItems: "center", gap: 16 },
+
+    liveBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      backgroundColor: "rgba(46,125,50,0.12)",
+      borderRadius: 10,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      marginLeft: 8,
+    },
+    liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#2E7D32" },
+    liveText: { fontSize: 9.5, fontWeight: "800", color: "#2E7D32", letterSpacing: 0.5 },
 
     simBanner: {
       flexDirection: "row",

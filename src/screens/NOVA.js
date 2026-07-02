@@ -33,6 +33,15 @@ const QUICK_ACTIONS = [
   { type: "card", labelKey: "nova.qCard" },
 ];
 
+// Chips for NOVA's real banking actions: tapping one simply sends the phrase
+// through the normal chat flow, where the backend detects the action.
+const ACTION_CHIPS = [
+  { label: "❄️ Freeze card", text: "Freeze my card" },
+  { label: "🧾 Transactions", text: "Show my recent transactions" },
+  { label: "🎯 Budget status", text: "How are my budgets?" },
+  { label: "📈 My portfolio", text: "Show my portfolio" },
+];
+
 export default function NOVA() {
   const navigation = useNavigation();
   const { colors } = useTheme();
@@ -110,8 +119,9 @@ export default function NOVA() {
     return null;
   };
 
-  const addMessage = (sender, text) => {
-    setMessages((prev) => [...prev, { id: Date.now() + Math.random(), sender, text }]);
+  // extra can carry an `action` (confirmable NOVA action) for bot messages.
+  const addMessage = (sender, text, extra = {}) => {
+    setMessages((prev) => [...prev, { id: Date.now() + Math.random(), sender, text, ...extra }]);
   };
 
   // Quick buttons: deterministic account answers, resolved on the client from
@@ -180,10 +190,68 @@ export default function NOVA() {
       });
       const data = await res.json();
       const reply = data?.reply || t("nova.processError");
+
+      if (data?.action?.type === "navigate" && data.action.target) {
+        // NOVA opens the screen for the user.
+        addMessage("bot", reply);
+        speakReply(reply);
+        setTimeout(() => {
+          try {
+            navigation.navigate(data.action.target);
+          } catch (e) {
+            console.log("NOVA navigate error:", e);
+          }
+        }, 700);
+      } else if (data?.action?.confirm) {
+        // State-changing action: show Yes / No buttons under the question.
+        addMessage("bot", reply, { action: data.action });
+        speakReply(reply);
+      } else {
+        addMessage("bot", reply);
+        speakReply(reply);
+      }
+    } catch (err) {
+      console.log("NOVA chat error:", err);
+      addMessage("bot", t("nova.connError"));
+    } finally {
+      setLoadingReply(false);
+    }
+  };
+
+  // Yes / No pressed on a confirmable action bubble.
+  const handleConfirm = async (msg, yes) => {
+    // Lock the buttons on that message first.
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msg.id ? { ...m, resolved: yes ? "yes" : "no" } : m))
+    );
+
+    if (!yes) {
+      const reply = "Okay, no changes made. Anything else I can help with? 😊";
+      addMessage("bot", reply);
+      speakReply(reply);
+      return;
+    }
+
+    setLoadingReply(true);
+    try {
+      const res = await fetch(`${API_BASE}/nova_action.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user?.user_id,
+          action: msg.action.type,
+          params: msg.action.params || {},
+        }),
+      });
+      const data = await res.json();
+      const reply =
+        data?.status === "success"
+          ? data.reply
+          : data?.message || "Sorry, that didn't work. Please try again.";
       addMessage("bot", reply);
       speakReply(reply);
     } catch (err) {
-      console.log("NOVA chat error:", err);
+      console.log("NOVA action error:", err);
       addMessage("bot", t("nova.connError"));
     } finally {
       setLoadingReply(false);
@@ -258,6 +326,33 @@ export default function NOVA() {
       <Text style={item.sender === "user" ? styles.userText : styles.botText}>
         {item.text}
       </Text>
+
+      {/* Yes / No confirmation buttons for NOVA actions */}
+      {item.action?.confirm &&
+        (item.resolved ? (
+          <Text style={styles.confirmResolved}>
+            {item.resolved === "yes" ? "✓ Confirmed" : "✕ Cancelled"}
+          </Text>
+        ) : (
+          <View style={styles.confirmRow}>
+            <TouchableOpacity
+              style={styles.yesBtn}
+              onPress={() => handleConfirm(item, true)}
+              disabled={loadingReply}
+            >
+              <MaterialCommunityIcons name="check" size={16} color="#fff" />
+              <Text style={styles.yesText}>Yes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.noBtn}
+              onPress={() => handleConfirm(item, false)}
+              disabled={loadingReply}
+            >
+              <MaterialCommunityIcons name="close" size={16} color={colors.dangerText} />
+              <Text style={styles.noText}>No</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
     </View>
   );
 
@@ -327,6 +422,16 @@ export default function NOVA() {
                 disabled={loadingReply}
               >
                 <Text style={styles.quickText}>{t(q.labelKey)}</Text>
+              </TouchableOpacity>
+            ))}
+            {ACTION_CHIPS.map((q) => (
+              <TouchableOpacity
+                key={q.label}
+                style={styles.quickBtn}
+                onPress={() => sendMessage(q.text)}
+                disabled={loadingReply}
+              >
+                <Text style={styles.quickText}>{q.label}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -435,6 +540,42 @@ const makeStyles = (c) =>
       color: "white",
       fontSize: 15,
       lineHeight: 20,
+    },
+
+    confirmRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 12,
+    },
+    yesBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      backgroundColor: c.primary,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 22,
+    },
+    yesText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+    noBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 5,
+      backgroundColor: "transparent",
+      borderWidth: 1.5,
+      borderColor: c.danger,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 22,
+    },
+    noText: { color: c.dangerText, fontWeight: "700", fontSize: 14 },
+    confirmResolved: {
+      marginTop: 10,
+      fontSize: 12.5,
+      fontWeight: "700",
+      color: c.textMuted,
     },
 
     typingBubble: {

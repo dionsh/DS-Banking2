@@ -25,6 +25,7 @@ import Notifications from '../screens/Notifications';
 import Help from '../screens/Help';
 import ApplePay from '../screens/ApplePay';
 import PersonalizeCard from '../screens/PersonalizeCard';
+import InvestLeaderboard from '../screens/InvestLeaderboard';
 
 
 
@@ -61,6 +62,7 @@ export default function StackNavigation() {
         <Stack.Screen name="Help" component={Help}/>
         <Stack.Screen name="ApplePay" component={ApplePay}/>
         <Stack.Screen name="PersonalizeCard" component={PersonalizeCard}/>
+        <Stack.Screen name="InvestLeaderboard" component={InvestLeaderboard}/>
        
         
 
