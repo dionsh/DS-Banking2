@@ -10,7 +10,7 @@
 //   2. "Instant Split": the original calculator that just pays your share of
 //      a bill split between N people.
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -21,8 +21,10 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -65,6 +67,13 @@ export default function SplitBill() {
   const [people, setPeople] = useState(2);
   const [label, setLabel] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // ----- smart receipt scanner (fills the instant-split total) -----
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState(null); // { total, id, date }
 
   const load = async (quiet = false) => {
     try {
@@ -289,6 +298,77 @@ export default function SplitBill() {
     setSubmitting(false);
   };
 
+  /* ---------- smart receipt scanner (real OCR via AI vision) ---------- */
+
+  // Only asks for camera permission when the user actually wants to scan.
+  const openScanner = async () => {
+    if (!permission || !permission.granted) {
+      const res = await requestPermission();
+      if (!res || !res.granted) {
+        Alert.alert(
+          "Camera needed",
+          "Allow camera access to scan a receipt. You can still type the amount manually."
+        );
+        return;
+      }
+    }
+    setScanning(false);
+    setScannerOpen(true);
+  };
+
+  // Capture the receipt and let the backend AI read the total, date and receipt
+  // ID off the REAL image (scan_receipt.php -> Groq/Gemini vision model).
+  const captureAndScan = async () => {
+    if (scanning || !cameraRef.current) return;
+    setScanning(true);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.5, base64: true });
+      if (!photo || !photo.base64) throw new Error("no-image");
+
+      const res = await fetch(`${API_BASE}/scan_receipt.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_base64: photo.base64 }),
+      });
+      const data = await res.json();
+
+      if (data.status === "success" && data.is_receipt && Number(data.total) > 0) {
+        const result = {
+          total: Number(data.total),
+          id: data.receipt_id ? String(data.receipt_id) : "",
+          date: data.date ? String(data.date) : "",
+        };
+        setScanResult(result);
+        setTotal(result.total.toFixed(2));
+        if (!label.trim()) setLabel(result.id ? "Receipt " + result.id : "Scanned receipt");
+        setScannerOpen(false);
+      } else if (data.status === "success" && !data.is_receipt) {
+        Alert.alert(
+          "No receipt detected",
+          "That doesn't look like a receipt. Make sure the total, date and receipt number are clearly visible, then try again."
+        );
+      } else if (data.status === "success") {
+        Alert.alert(
+          "Couldn't read the total",
+          "I couldn't find a total on that receipt. Try again with better lighting, or type the amount manually."
+        );
+      } else {
+        Alert.alert(
+          "Scan failed",
+          data.message || "Couldn't read the receipt. Please try again or enter the amount manually."
+        );
+      }
+    } catch (e) {
+      console.log("Receipt scan error:", e);
+      Alert.alert(
+        "Scan failed",
+        "Couldn't read the receipt. Check your connection and try again, or enter the amount manually."
+      );
+    } finally {
+      setScanning(false);
+    }
+  };
+
   /* ---------- render helpers ---------- */
 
   const initials = (fullName) =>
@@ -504,6 +584,29 @@ export default function SplitBill() {
           </>
         ) : (
           <>
+            {/* ----- Smart Receipt Scanner ----- */}
+            <TouchableOpacity style={styles.scanCta} onPress={openScanner} activeOpacity={0.85}>
+              <View style={styles.scanCtaIcon}>
+                <MaterialCommunityIcons name="line-scan" size={24} color="#fff" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.scanCtaTitle}>Scan a receipt</Text>
+                <Text style={styles.scanCtaSub}>
+                  Auto-fill the total — then just pick how many people
+                </Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color="#fff" />
+            </TouchableOpacity>
+
+            {scanResult && (
+              <View style={styles.detectedCard}>
+                <MaterialCommunityIcons name="receipt" size={18} color={colors.success} />
+                <Text style={styles.detectedText}>
+                  Detected {eur(scanResult.total)} · {scanResult.date} · {scanResult.id}
+                </Text>
+              </View>
+            )}
+
             {/* ----- the original instant split calculator ----- */}
             <View style={styles.card}>
               <Text style={styles.label}>{t("split.totalBill")}</Text>
@@ -579,6 +682,67 @@ export default function SplitBill() {
           </>
         )}
       </ScrollView>
+
+      {/* ----- Smart Receipt Scanner camera modal ----- */}
+      <Modal
+        visible={scannerOpen}
+        animationType="slide"
+        onRequestClose={() => !scanning && setScannerOpen(false)}
+      >
+        <View style={styles.scanContainer}>
+          <View style={styles.scanHeader}>
+            <TouchableOpacity onPress={() => setScannerOpen(false)} disabled={scanning}>
+              <MaterialCommunityIcons name="close" size={26} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.scanHeaderTitle}>Scan Receipt</Text>
+            <View style={{ width: 26 }} />
+          </View>
+
+          <Text style={styles.scanInstruction}>
+            Position the receipt inside the frame, then tap Scan.
+          </Text>
+
+          <View style={styles.cameraWrap}>
+            {scannerOpen && permission?.granted ? (
+              <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+            ) : (
+              <View style={[styles.camera, styles.cameraFallback]}>
+                <MaterialCommunityIcons name="camera-off-outline" size={54} color="#fff" />
+              </View>
+            )}
+
+            {/* receipt framing corners */}
+            <View style={styles.receiptFrame} pointerEvents="none">
+              <View style={[styles.corner, styles.tl]} />
+              <View style={[styles.corner, styles.tr]} />
+              <View style={[styles.corner, styles.bl]} />
+              <View style={[styles.corner, styles.br]} />
+            </View>
+
+            {scanning && (
+              <View style={styles.scanOverlay} pointerEvents="none">
+                <ActivityIndicator size="large" color="#fff" />
+                <Text style={styles.scanningTitle}>Reading receipt…</Text>
+                <Text style={styles.scanningSub}>Detecting total, date & receipt ID</Text>
+              </View>
+            )}
+          </View>
+
+          <SafeAreaView edges={["bottom"]} style={styles.scanFooter}>
+            <TouchableOpacity
+              style={[styles.scanBtn, scanning && styles.scanBtnDisabled]}
+              onPress={captureAndScan}
+              disabled={scanning}
+            >
+              <MaterialCommunityIcons name="line-scan" size={20} color="#fff" />
+              <Text style={styles.scanBtnText}>{scanning ? "Reading…" : "Scan Receipt"}</Text>
+            </TouchableOpacity>
+            <Text style={styles.scanHint}>
+              Reads the total, date and receipt ID, then fills the amount for you.
+            </Text>
+          </SafeAreaView>
+        </View>
+      </Modal>
 
     </SafeAreaView>
   );
@@ -835,4 +999,107 @@ const makeStyles = (c) =>
       justifyContent: "center",
     },
     confirmText: { color: "#fff", fontWeight: "600", fontSize: 16, letterSpacing: 0.5 },
+
+    // ----- smart receipt scanner -----
+    scanCta: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.primary,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 14,
+      elevation: 3,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 6,
+    },
+    scanCtaIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: "rgba(255,255,255,0.18)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    scanCtaTitle: { color: "#fff", fontSize: 15.5, fontWeight: "800" },
+    scanCtaSub: { color: "rgba(255,255,255,0.82)", fontSize: 12, marginTop: 2 },
+
+    detectedCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: c.surfaceAlt,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginBottom: 14,
+    },
+    detectedText: { color: c.text, fontSize: 13, fontWeight: "600", flex: 1 },
+
+    // scanner modal
+    scanContainer: { flex: 1, backgroundColor: "#000" },
+    scanHeader: {
+      paddingTop: 55,
+      paddingBottom: 16,
+      paddingHorizontal: 20,
+      backgroundColor: c.primary,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    scanHeaderTitle: { color: "#fff", fontSize: 18, fontWeight: "700" },
+    scanInstruction: {
+      color: "rgba(255,255,255,0.85)",
+      fontSize: 14,
+      textAlign: "center",
+      lineHeight: 20,
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+    },
+    cameraWrap: {
+      flex: 1,
+      marginHorizontal: 16,
+      borderRadius: 20,
+      overflow: "hidden",
+      backgroundColor: "#111",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    camera: { ...StyleSheet.absoluteFillObject },
+    cameraFallback: { justifyContent: "center", alignItems: "center", backgroundColor: "#222" },
+    receiptFrame: { width: "68%", height: "80%", borderRadius: 16 },
+    corner: { position: "absolute", width: 34, height: 34, borderColor: "#fff" },
+    tl: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 16 },
+    tr: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 16 },
+    bl: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 16 },
+    br: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 16 },
+    scanOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.58)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    scanningTitle: { color: "#fff", marginTop: 12, fontSize: 16, fontWeight: "700" },
+    scanningSub: { color: "rgba(255,255,255,0.75)", fontSize: 13, marginTop: 6 },
+    scanFooter: { backgroundColor: "#000", paddingHorizontal: 20, paddingTop: 16 },
+    scanBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      backgroundColor: c.primary,
+      paddingVertical: 16,
+      borderRadius: 14,
+    },
+    scanBtnDisabled: { opacity: 0.6 },
+    scanBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+    scanHint: {
+      color: "rgba(255,255,255,0.6)",
+      fontSize: 12,
+      textAlign: "center",
+      marginTop: 12,
+      marginBottom: 6,
+      lineHeight: 17,
+    },
   });
