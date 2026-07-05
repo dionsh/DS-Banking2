@@ -16,6 +16,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { confirmOverBudget, partnerBudgetCategory } from "../utils/budgetGuard";
 
 export default function PartnerCashback() {
   const navigation = useNavigation();
@@ -76,7 +77,7 @@ export default function PartnerCashback() {
     }, [])
   );
 
-  const handleBuy = (partner) => {
+  const handleBuy = async (partner) => {
     const price = Number(partner.price);
     const cashback = (price * Number(partner.cashback_percent)) / 100;
 
@@ -84,6 +85,15 @@ export default function PartnerCashback() {
       Alert.alert(t("topup.insufficient"), t("roundup.insufficientMsg"));
       return;
     }
+
+    // Warn (but don't block) if this purchase would go over the monthly budget
+    // for the partner's category (Food, Shopping, Electronics, …).
+    const okBudget = await confirmOverBudget({
+      userId: user.user_id,
+      category: partnerBudgetCategory(partner.category),
+      amount: price,
+    });
+    if (!okBudget) return;
 
     Alert.alert(
       partner.name,

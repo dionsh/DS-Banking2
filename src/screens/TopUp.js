@@ -19,6 +19,7 @@ import CountryPicker from "react-native-country-picker-modal";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
+import { confirmOverBudget } from "../utils/budgetGuard";
 
 export default function TopUp() {
   const navigation = useNavigation();
@@ -114,6 +115,11 @@ export default function TopUp() {
 
     const totalAmount = parseFloat(amount);
     if (cardData.balance < totalAmount) return Alert.alert(t("common.error"), t("topup.insufficient"));
+
+    // Warn (but don't block) if this top-up would go over the user's monthly
+    // "Phone Top-Ups" budget.
+    const okBudget = await confirmOverBudget({ userId: user_id, category: "Top Up", amount: totalAmount });
+    if (!okBudget) return;
 
     setSending(true);
     try {

@@ -17,6 +17,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { confirmOverBudget } from "../utils/budgetGuard";
 
 export default function Transfer() {
   const navigation = useNavigation();
@@ -54,11 +55,19 @@ export default function Transfer() {
   }, []);
 
   // Step 1: validate the form, then ask for the PIN.
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
     if (!amount || (!receiverEmail && !receiverName && !receiverSurname)) {
       Alert.alert(t("common.error"), t("transfer.fillInfo"));
       return;
     }
+    // Warn (but don't block) if this transfer would go over the user's monthly
+    // "Transfers" budget — asked before the PIN step so they can back out early.
+    const okBudget = await confirmOverBudget({
+      userId: sender.user_id,
+      category: "Transfers",
+      amount: parseFloat(amount),
+    });
+    if (!okBudget) return;
     setPin("");
     setPinModalVisible(true);
   };

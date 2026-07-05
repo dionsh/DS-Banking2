@@ -22,6 +22,7 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { confirmOverBudget } from "../utils/budgetGuard";
 
 const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 
@@ -89,6 +90,18 @@ export default function Subscriptions() {
   const monthlyTotal = plans.reduce((sum, p) => (p.active ? sum + Number(p.price) : sum), 0);
 
   const runToggle = async (plan) => {
+    // Subscribing charges the first month now, so warn (but don't block) if it
+    // would go over the monthly "Bills & Subscriptions" budget. Cancelling
+    // refunds money, so it never needs a check.
+    if (!plan.active) {
+      const okBudget = await confirmOverBudget({
+        userId,
+        category: "Subscriptions",
+        amount: Number(plan.price),
+      });
+      if (!okBudget) return;
+    }
+
     const endpoint = plan.active ? "cancel_subscription.php" : "subscribe.php";
     setBusyKey(plan.plan_key);
     try {

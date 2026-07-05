@@ -29,6 +29,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { confirmOverBudget } from "../utils/budgetGuard";
 
 const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 const GREEN = "#2E7D32";
@@ -162,6 +163,16 @@ export default function SplitBill() {
   /* ---------- answer an incoming request ---------- */
 
   const respond = async (req, accept) => {
+    // Accepting pays your share (a "Split Bills" spend), so warn (but don't
+    // block) if it would go over that budget. Declining moves no money.
+    if (accept) {
+      const okBudget = await confirmOverBudget({
+        userId: user.user_id,
+        category: "Split Bills",
+        amount: Number(req.share_amount),
+      });
+      if (!okBudget) return;
+    }
     setBusyRequest(req.id);
     try {
       const res = await fetch(`${API_BASE}/respond_split_request.php`, {
@@ -234,6 +245,15 @@ export default function SplitBill() {
       Alert.alert(t("topup.insufficient"), t("split.shareTooBig"));
       return;
     }
+
+    // Paying your share is a "Split Bills" spend — warn (but don't block) if it
+    // would go over that budget.
+    const okBudget = await confirmOverBudget({
+      userId: user.user_id,
+      category: "Split Bills",
+      amount: share,
+    });
+    if (!okBudget) return;
 
     setSubmitting(true);
     try {

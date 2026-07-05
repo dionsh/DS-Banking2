@@ -16,6 +16,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { confirmOverBudget } from "../utils/budgetGuard";
 
 export default function RoundItUp() {
   const navigation = useNavigation();
@@ -82,6 +83,15 @@ export default function RoundItUp() {
       Alert.alert(t("topup.insufficient"), t("roundup.insufficientMsg"));
       return;
     }
+
+    // The purchase itself is booked as a "Card Purchases" spend (the round-up
+    // goes to savings), so warn (but don't block) if it goes over that budget.
+    const okBudget = await confirmOverBudget({
+      userId: user.user_id,
+      category: "Card Purchases",
+      amount: purchaseNum,
+    });
+    if (!okBudget) return;
 
     setSubmitting(true);
     try {
