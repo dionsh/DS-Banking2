@@ -29,8 +29,15 @@ export default function Transfer() {
   const [amount, setAmount] = useState("");
   const [receiverName, setReceiverName] = useState("");
   const [receiverSurname, setReceiverSurname] = useState("");
-  const [receiverEmail, setReceiverEmail] = useState("");
+  const [receiverAccount, setReceiverAccount] = useState("");
   const [message, setMessage] = useState("");
+
+  // Shown grouped in 4s ("1234 5678 9012 3456") but stored digits-only.
+  const formatAccountNumber = (v) => {
+    const digits = v.replace(/\D/g, "").slice(0, 16);
+    return digits.replace(/(\d{4})(?=\d)/g, "$1 ");
+  };
+  const accountDigits = receiverAccount.replace(/\s/g, "");
 
   // PIN confirmation
   const [pinModalVisible, setPinModalVisible] = useState(false);
@@ -56,8 +63,16 @@ export default function Transfer() {
 
   // Step 1: validate the form, then ask for the PIN.
   const handleTransfer = async () => {
-    if (!amount || (!receiverEmail && !receiverName && !receiverSurname)) {
+    if (!amount || !accountDigits || !receiverName.trim() || !receiverSurname.trim()) {
       Alert.alert(t("common.error"), t("transfer.fillInfo"));
+      return;
+    }
+    if (accountDigits.length !== 16) {
+      Alert.alert(t("common.error"), t("transfer.invalidAccount"));
+      return;
+    }
+    if (sender.account_number && accountDigits === String(sender.account_number)) {
+      Alert.alert(t("common.error"), t("transfer.ownAccount"));
       return;
     }
     // Warn (but don't block) if this transfer would go over the user's monthly
@@ -110,9 +125,9 @@ export default function Transfer() {
         body: JSON.stringify({
           sender_id: sender.user_id,
           amount: parseFloat(amount),
-          receiver_email: receiverEmail,
-          receiver_name: receiverName,
-          receiver_surname: receiverSurname,
+          receiver_account_number: accountDigits,
+          receiver_name: receiverName.trim(),
+          receiver_surname: receiverSurname.trim(),
           message,
         }),
       });
@@ -204,14 +219,15 @@ export default function Transfer() {
           onChangeText={setReceiverSurname}
         />
 
-        <Text style={styles.label}>{t("transfer.receiverEmail")}</Text>
+        <Text style={styles.label}>{t("transfer.receiverAccount")}</Text>
         <TextInput
-          style={styles.input}
-          placeholder="email@example.com"
+          style={[styles.input, { letterSpacing: 1.5 }]}
+          placeholder="1234 5678 9012 3456"
           placeholderTextColor={colors.placeholder}
-          keyboardType="email-address"
-          value={receiverEmail}
-          onChangeText={setReceiverEmail}
+          keyboardType="number-pad"
+          maxLength={19}
+          value={receiverAccount}
+          onChangeText={(v) => setReceiverAccount(formatAccountNumber(v))}
         />
 
         <Text style={styles.label}>{t("transfer.messageOptional")}</Text>

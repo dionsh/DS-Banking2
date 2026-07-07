@@ -39,6 +39,7 @@ import BudgetPlanner from "../screens/BudgetPlanner";
 import SharedSavings from "../screens/SharedSavings";
 import FinancialHealth from "../screens/FinancialHealth";
 import Travel from "../screens/Travel";
+import Wrapped from "../screens/Wrapped";
 
 const Drawer = createDrawerNavigator();
 
@@ -83,6 +84,20 @@ export default function DrawerNavigation() {
           drawerLabel: t("menu.myCharacter"),
           drawerIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="tshirt-crew-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="DS Wrapped"
+        component={Wrapped}
+        options={{
+          drawerLabel: t("menu.wrapped"),
+          // The story is driven by horizontal swipes — keep the drawer's
+          // edge-swipe out of the way while it plays.
+          swipeEnabled: false,
+          drawerIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="star-shooting" color={color} size={size} />
           ),
         }}
       />

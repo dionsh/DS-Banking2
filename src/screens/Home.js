@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { DrawerActions, useFocusEffect } from "@react-navigation/native";
 import { View, StyleSheet, ScrollView, TouchableOpacity, Text, Image } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect, Circle } from "react-native-svg";
 import UserCard from "../components/UserCard";
 import ApplePayPrompt from "../components/ApplePayPrompt";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -58,7 +59,10 @@ useFocusEffect(
             name: parsed.name,
             surname: parsed.surname,
             email: parsed.email,
-            account_number: data.card.card_number,
+            // Show the real bank account number (from the accounts table),
+            // not the debit card number — this is the value users share to
+            // receive transfers.
+            account_number: data.card.account_number,
             balance: Number(data.card.balance) || 0,
           });
         }
@@ -129,6 +133,44 @@ useFocusEffect(
   userId={user.id}
   navigation={navigation}
 />
+
+        {/* DS Banking Wrapped — story-style recap, available any time */}
+        <TouchableOpacity
+          style={styles.wrappedBanner}
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate("DS Wrapped")}
+        >
+          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+            <Defs>
+              <SvgGradient id="homeWrapped" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor="#241B7A" />
+                <Stop offset="0.55" stopColor="#3B2BC4" />
+                <Stop offset="1" stopColor="#6A4BFF" />
+              </SvgGradient>
+            </Defs>
+            <Rect width="100%" height="100%" rx="20" fill="url(#homeWrapped)" />
+            <Circle cx="86%" cy="18%" r="54" fill="rgba(255,255,255,0.08)" />
+            <Circle cx="73%" cy="132%" r="72" fill="rgba(255,255,255,0.06)" />
+            <Circle cx="12%" cy="86%" r="26" fill="rgba(255,255,255,0.07)" />
+          </Svg>
+
+          <View style={styles.wrappedIconWrap}>
+            <MaterialCommunityIcons name="star-shooting" size={24} color="#FFD200" />
+          </View>
+
+          <View style={styles.wrappedTextWrap}>
+            <Text style={styles.wrappedTitle} numberOfLines={1}>
+              {t("wrapped.bannerTitle")}
+            </Text>
+            <Text style={styles.wrappedSub} numberOfLines={2}>
+              {t("wrapped.bannerSub")}
+            </Text>
+          </View>
+
+          <View style={styles.wrappedPlay}>
+            <MaterialCommunityIcons name="play" size={22} color="#241B7A" />
+          </View>
+        </TouchableOpacity>
 
         <View style={styles.gridContainer}>
           <ServiceBtn icon="swap-horizontal" label={t("home.transactions")} onPress={() => navigation.navigate('Transactions')} />
@@ -203,6 +245,44 @@ const makeStyles = (c) =>
       backgroundColor: c.danger,
       borderWidth: 1.5,
       borderColor: c.primary,
+    },
+    wrappedBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 15,
+      marginTop: 16,
+      paddingLeft: 16,
+      paddingRight: 14,
+      paddingVertical: 16,
+      minHeight: 84,
+      borderRadius: 20,
+      overflow: 'hidden',
+      backgroundColor: '#241B7A', // fallback behind the SVG gradient
+      elevation: 5,
+      shadowColor: '#191970',
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+    },
+    wrappedIconWrap: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: 'rgba(255,255,255,0.16)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 14,
+    },
+    wrappedTextWrap: { flex: 1, paddingRight: 10 },
+    wrappedTitle: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.3 },
+    wrappedSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12.5, marginTop: 3, lineHeight: 17 },
+    wrappedPlay: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#FFFFFF',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     gridContainer: {
       flexDirection: 'row',
