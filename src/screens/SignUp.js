@@ -16,6 +16,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
+import { PressableScale, PopWhenActive } from '../components/motion';
 
 // Transparent DS shield — the only image used on the branded slides (it renders
 // cleanly over a gradient, unlike the illustration assets that bake in a white
@@ -302,16 +303,17 @@ const SignUp = ({ navigation }) => {
 
               <View style={styles.pinContainer}>
                 {[1, 2, 3, 4].map((dot, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.dot,
-                      {
-                        backgroundColor:
-                          pin.length > index ? colors.accent : colors.surfaceAlt,
-                      },
-                    ]}
-                  />
+                  <PopWhenActive key={index} active={pin.length > index}>
+                    <View
+                      style={[
+                        styles.dot,
+                        {
+                          backgroundColor:
+                            pin.length > index ? colors.accent : colors.surfaceAlt,
+                        },
+                      ]}
+                    />
+                  </PopWhenActive>
                 ))}
               </View>
 
@@ -323,19 +325,21 @@ const SignUp = ({ navigation }) => {
                 onChangeText={setPin}
               />
 
-              <TouchableOpacity
+              <PressableScale
                 style={styles.primaryBtn}
+                scaleTo={0.95}
                 onPress={() => navigation.navigate('Login')}
               >
                 <Text style={styles.primaryBtnText}>{t('signup.enter')}</Text>
-              </TouchableOpacity>
+              </PressableScale>
 
-              <TouchableOpacity
+              <PressableScale
                 style={styles.secondaryBtn}
+                scaleTo={0.95}
                 onPress={() => navigation.navigate('Register')}
               >
                 <Text style={styles.secondaryBtnText}>{t('signup.register')}</Text>
-              </TouchableOpacity>
+              </PressableScale>
 
               <TouchableOpacity style={styles.linkBtn}>
                 <Text style={styles.linkText}>{t('signup.openIndividual')}</Text>

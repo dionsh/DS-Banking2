@@ -9,7 +9,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   RefreshControl,
@@ -25,6 +24,7 @@ import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import AnimatedBar from "../components/AnimatedBar";
 import AnimatedNumber from "../components/AnimatedNumber";
+import { MotionView, PressableScale } from "../components/motion";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -103,9 +103,9 @@ export default function FinancialHealth() {
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.openDrawer()}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.openDrawer()}>
           <MaterialCommunityIcons name="menu" size={28} color="#fff" />
-        </TouchableOpacity>
+        </PressableScale>
         <Text style={styles.headerTitle}>Financial Health</Text>
         <MaterialCommunityIcons name="heart-pulse" size={24} color="#fff" />
       </View>
@@ -128,7 +128,7 @@ export default function FinancialHealth() {
           ) : data ? (
             <>
               {/* ----- gauge ----- */}
-              <View style={styles.gaugeCard}>
+              <MotionView from="zoom" spring style={styles.gaugeCard}>
                 <View style={{ width: RING_SIZE, height: RING_SIZE }}>
                   <Svg width={RING_SIZE} height={RING_SIZE}>
                     <Circle
@@ -177,9 +177,10 @@ export default function FinancialHealth() {
                 </View>
 
                 <Text style={styles.explanation}>{data.explanation}</Text>
-              </View>
+              </MotionView>
 
               {/* ----- factor breakdown ----- */}
+              <MotionView from="down" delay={180}>
               <Text style={styles.sectionTitle}>Score breakdown</Text>
               <View style={styles.cardBox}>
                 {data.factors.map((f, i) => {
@@ -207,8 +208,10 @@ export default function FinancialHealth() {
                   );
                 })}
               </View>
+              </MotionView>
 
               {/* ----- suggestions ----- */}
+              <MotionView from="down" delay={300}>
               <Text style={styles.sectionTitle}>How to improve</Text>
               <View style={styles.cardBox}>
                 {data.suggestions.map((s, i) => (
@@ -220,6 +223,7 @@ export default function FinancialHealth() {
                   </View>
                 ))}
               </View>
+              </MotionView>
 
               <Text style={styles.footNote}>
                 Calculated from your real DS Banking activity — it updates as your habits change.

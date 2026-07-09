@@ -17,6 +17,7 @@ import DrawerNavigation from './DrawerNavigation';
 import LogOut from '../screens/LogOut';
 import Profile from '../screens/Profile';
 import PersonalDetails from '../screens/PersonalDetails';
+import ContactDetailsScreen from '../screens/ContactDetailsScreen';
 import Settings from '../screens/Settings';
 import Card from '../screens/Card';
 import Transactions from '../screens/Transactions';
@@ -39,7 +40,13 @@ export default function StackNavigation() {
       initialRouteName="SignUp"
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: colors.background }
+        contentStyle: { backgroundColor: colors.background },
+        // Premium screen-to-screen motion: iOS-style push everywhere, with a
+        // swipe-back gesture. Uses the native transition engine, so it stays
+        // at 60fps regardless of JS load.
+        animation: 'slide_from_right',
+        animationDuration: 280,
+        gestureEnabled: true,
       }}
     >
       
@@ -54,11 +61,18 @@ export default function StackNavigation() {
          <Stack.Screen name="LogOut" component={LogOut}/>
        <Stack.Screen name="Profile" component={Profile}/>
         <Stack.Screen name="PersonalDetails" component={PersonalDetails}/>
+        <Stack.Screen name="ContactDetails" component={ContactDetailsScreen}/>
         <Stack.Screen name="Settings" component={Settings}/>
         <Stack.Screen name="Card" component={Card}/>
         <Stack.Screen name="Transactions" component={Transactions}/>
         <Stack.Screen name="TopUp" component={TopUp}/>
-        <Stack.Screen name="Notifications" component={Notifications}/>
+        {/* The inbox opens like a sheet — it's a glance-and-dismiss screen,
+            not a step forward in a flow. */}
+        <Stack.Screen
+          name="Notifications"
+          component={Notifications}
+          options={{ animation: 'slide_from_bottom' }}
+        />
         <Stack.Screen name="Help" component={Help}/>
         <Stack.Screen name="ApplePay" component={ApplePay}/>
         <Stack.Screen name="PersonalizeCard" component={PersonalizeCard}/>

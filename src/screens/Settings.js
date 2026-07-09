@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Switch,
   Alert,
   ScrollView,
@@ -15,6 +14,7 @@ import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency, formatIn, currencyByCode } from "../currency/CurrencyContext";
+import { MotionView, PressableScale } from "../components/motion";
 
 export default function Settings() {
   const navigation = useNavigation();
@@ -113,9 +113,9 @@ export default function Settings() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.openDrawer()}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.openDrawer()}>
           <MaterialCommunityIcons name="menu" size={28} color={colors.onPrimary} />
-        </TouchableOpacity>
+        </PressableScale>
 
         <Text style={styles.headerTitle}>{t("settings.title")}</Text>
 
@@ -128,9 +128,10 @@ export default function Settings() {
         showsVerticalScrollIndicator={false}
       >
         {/* Appearance */}
+        <MotionView from="down" delay={0}>
         <Text style={styles.sectionTitle}>{t("settings.chooseVersion")}</Text>
 
-        <TouchableOpacity style={styles.optionRow} onPress={() => setTheme("light")}>
+        <PressableScale style={styles.optionRow} scaleTo={0.98} onPress={() => setTheme("light")}>
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="white-balance-sunny"
@@ -144,9 +145,9 @@ export default function Settings() {
           {theme === "light" && (
             <MaterialCommunityIcons name="check-circle" size={22} color={colors.accent} />
           )}
-        </TouchableOpacity>
+        </PressableScale>
 
-        <TouchableOpacity style={styles.optionRow} onPress={() => setTheme("dark")}>
+        <PressableScale style={styles.optionRow} scaleTo={0.98} onPress={() => setTheme("dark")}>
           <View style={styles.optionLeft}>
             <MaterialCommunityIcons
               name="weather-night"
@@ -160,17 +161,20 @@ export default function Settings() {
           {theme === "dark" && (
             <MaterialCommunityIcons name="check-circle" size={22} color={colors.accent} />
           )}
-        </TouchableOpacity>
+        </PressableScale>
+        </MotionView>
 
         {/* Language */}
+        <MotionView from="down" delay={80}>
         <Text style={[styles.sectionTitle, { marginTop: 30 }]}>
           {t("settings.language")}
         </Text>
 
         {languages.map((lng) => (
-          <TouchableOpacity
+          <PressableScale
             key={lng.code}
             style={styles.optionRow}
+            scaleTo={0.98}
             onPress={() => setLanguage(lng.code)}
           >
             <View style={styles.optionLeft}>
@@ -186,10 +190,12 @@ export default function Settings() {
             {language === lng.code && (
               <MaterialCommunityIcons name="check-circle" size={22} color={colors.accent} />
             )}
-          </TouchableOpacity>
+          </PressableScale>
         ))}
+        </MotionView>
 
         {/* Currency Converter */}
+        <MotionView from="down" delay={160}>
         <Text style={[styles.sectionTitle, { marginTop: 30 }]}>Currency Converter</Text>
 
         <Text style={styles.curHint}>Convert from</Text>
@@ -197,15 +203,16 @@ export default function Settings() {
           {currencies.map((cur) => {
             const selected = fromCode === cur.code;
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={`from-${cur.code}`}
                 style={[styles.curPill, selected && styles.curPillActive]}
+                scaleTo={0.93}
                 onPress={() => setFromCode(cur.code)}
               >
                 <Text style={[styles.curPillText, selected && styles.curPillTextActive]}>
                   {cur.symbol} {cur.code}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </View>
@@ -215,15 +222,16 @@ export default function Settings() {
           {currencies.map((cur) => {
             const selected = toCode === cur.code;
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={`to-${cur.code}`}
                 style={[styles.curPill, selected && styles.curPillActive]}
+                scaleTo={0.93}
                 onPress={() => setToCode(cur.code)}
               >
                 <Text style={[styles.curPillText, selected && styles.curPillTextActive]}>
                   {cur.symbol} {cur.code}
                 </Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </View>
@@ -239,12 +247,14 @@ export default function Settings() {
           </View>
         )}
 
-        <TouchableOpacity style={styles.convertBtn} onPress={handleConvert}>
+        <PressableScale style={styles.convertBtn} scaleTo={0.95} onPress={handleConvert}>
           <MaterialCommunityIcons name="swap-horizontal" size={20} color="#fff" />
           <Text style={styles.convertBtnText}>Convert Balance</Text>
-        </TouchableOpacity>
+        </PressableScale>
+        </MotionView>
 
         {/* Notifications */}
+        <MotionView from="down" delay={240}>
         <Text style={[styles.sectionTitle, { marginTop: 30 }]}>
           {t("settings.notifications")}
         </Text>
@@ -267,6 +277,7 @@ export default function Settings() {
             thumbColor="#fff"
           />
         </View>
+        </MotionView>
       </ScrollView>
     </View>
   );

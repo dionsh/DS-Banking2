@@ -27,6 +27,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import AnimatedBar from "../components/AnimatedBar";
+import { MotionView, PressableScale } from "../components/motion";
 
 const WARN_PCT = 80; // amber warning threshold
 
@@ -186,12 +187,13 @@ export default function BudgetPlanner() {
     return colors.success;
   };
 
-  const renderBudget = (b) => {
+  const renderBudget = (b, index = 0) => {
     const over = b.pct >= 100;
     const warn = !over && b.pct >= WARN_PCT;
 
     return (
-      <TouchableOpacity key={b.id} style={styles.budgetCard} onPress={() => openEdit(b)} activeOpacity={0.75}>
+      <MotionView key={b.id} from="down" delay={100 + Math.min(index, 8) * 60}>
+      <PressableScale style={styles.budgetCard} scaleTo={0.98} onPress={() => openEdit(b)}>
         <View style={styles.budgetHead}>
           <View style={[styles.catIcon, { backgroundColor: b.color + "22" }]}>
             <MaterialCommunityIcons name={b.icon} size={22} color={b.color} />
@@ -234,7 +236,8 @@ export default function BudgetPlanner() {
             <Text style={styles.remainingText}>{eur(b.remaining)} remaining</Text>
           )}
         </View>
-      </TouchableOpacity>
+      </PressableScale>
+      </MotionView>
     );
   };
 
@@ -244,13 +247,13 @@ export default function BudgetPlanner() {
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.openDrawer()}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.openDrawer()}>
           <MaterialCommunityIcons name="menu" size={28} color="#fff" />
-        </TouchableOpacity>
+        </PressableScale>
         <Text style={styles.headerTitle}>Budget Planner</Text>
-        <TouchableOpacity onPress={openCreate}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={openCreate}>
           <MaterialCommunityIcons name="plus-circle-outline" size={26} color="#fff" />
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
       {loading || !data ? (
@@ -265,22 +268,23 @@ export default function BudgetPlanner() {
         >
           {/* ----- month selector ----- */}
           <View style={styles.monthRow}>
-            <TouchableOpacity style={styles.monthBtn} onPress={() => changeMonth(-1)}>
+            <PressableScale style={styles.monthBtn} scaleTo={0.85} onPress={() => changeMonth(-1)}>
               <MaterialCommunityIcons name="chevron-left" size={26} color={colors.accent} />
-            </TouchableOpacity>
+            </PressableScale>
             <Text style={styles.monthLabel}>{data.month_label}</Text>
-            <TouchableOpacity
+            <PressableScale
               style={[styles.monthBtn, month >= currentMonthKey() && { opacity: 0.35 }]}
+              scaleTo={0.85}
               onPress={() => changeMonth(1)}
               disabled={month >= currentMonthKey()}
             >
               <MaterialCommunityIcons name="chevron-right" size={26} color={colors.accent} />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
 
           {/* ----- overall summary ----- */}
           {data.budgets.length > 0 && (
-            <View style={styles.summaryCard}>
+            <MotionView from="down" delay={0} style={styles.summaryCard}>
               <Text style={styles.summaryLabel}>SPENT THIS MONTH</Text>
               <Text style={styles.summaryValue}>
                 {eur(totals.spent)} <Text style={styles.summaryOf}>of {eur(totals.limit)}</Text>
@@ -298,26 +302,26 @@ export default function BudgetPlanner() {
                   ? `${eur(totals.remaining)} left to spend`
                   : `${eur(Math.abs(totals.remaining))} over your total budget`}
               </Text>
-            </View>
+            </MotionView>
           )}
 
           {/* ----- budgets ----- */}
           <View style={styles.sectionHeadRow}>
             <Text style={styles.sectionTitle}>Category budgets</Text>
-            <TouchableOpacity style={styles.newBtn} onPress={openCreate}>
+            <PressableScale style={styles.newBtn} scaleTo={0.93} onPress={openCreate}>
               <MaterialCommunityIcons name="plus" size={16} color="#fff" />
               <Text style={styles.newBtnText}>Add Budget</Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
 
           {data.budgets.length === 0 ? (
-            <View style={styles.empty}>
+            <MotionView from="zoom" spring style={styles.empty}>
               <MaterialCommunityIcons name="chart-donut" size={44} color={colors.textMuted} />
               <Text style={styles.emptyText}>
                 No budgets for {data.month_label} yet. Set a monthly limit for a category — food,
                 shopping, bills — and track your real spending against it.
               </Text>
-            </View>
+            </MotionView>
           ) : (
             data.budgets.map(renderBudget)
           )}
@@ -328,9 +332,10 @@ export default function BudgetPlanner() {
               <Text style={[styles.sectionTitle, { marginTop: 22 }]}>Spending without a budget</Text>
               <Text style={styles.sectionHint}>Tap a category to give it a limit.</Text>
               {data.unbudgeted.map((u) => (
-                <TouchableOpacity
+                <PressableScale
                   key={u.category}
                   style={styles.unbudgetedRow}
+                  scaleTo={0.98}
                   onPress={() => {
                     setEditing(null);
                     setCategory({ key: u.category, label: u.label, icon: u.icon, color: u.color });
@@ -344,7 +349,7 @@ export default function BudgetPlanner() {
                   <Text style={styles.unbudgetedName}>{u.label}</Text>
                   <Text style={styles.unbudgetedAmt}>{eur(u.spent)}</Text>
                   <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
+                </PressableScale>
               ))}
             </>
           )}
@@ -357,7 +362,7 @@ export default function BudgetPlanner() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.modalBackdrop}
         >
-          <View style={styles.modalCard}>
+          <MotionView from="zoom" spring style={styles.modalCard}>
             <Text style={styles.modalTitle}>{editing ? "Edit Budget" : "New Budget"}</Text>
 
             {editing || (category && !availableCategories.some((c) => c.key === category.key)) ? (
@@ -376,16 +381,17 @@ export default function BudgetPlanner() {
                     {availableCategories.map((c) => {
                       const active = category?.key === c.key;
                       return (
-                        <TouchableOpacity
+                        <PressableScale
                           key={c.key}
                           style={[styles.catChoice, active && { backgroundColor: c.color, borderColor: c.color }]}
+                          scaleTo={0.93}
                           onPress={() => setCategory(c)}
                         >
                           <MaterialCommunityIcons name={c.icon} size={18} color={active ? "#fff" : c.color} />
                           <Text style={[styles.catChoiceText, active && { color: "#fff" }]} numberOfLines={1}>
                             {c.label}
                           </Text>
-                        </TouchableOpacity>
+                        </PressableScale>
                       );
                     })}
                   </View>
@@ -403,18 +409,18 @@ export default function BudgetPlanner() {
             />
 
             <View style={styles.modalBtns}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+              <PressableScale style={styles.cancelBtn} scaleTo={0.95} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={saveBudget} disabled={saving}>
+              </PressableScale>
+              <PressableScale style={styles.saveBtn} scaleTo={0.95} onPress={saveBudget} disabled={saving}>
                 {saving ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={styles.saveText}>{editing ? "Save" : "Create"}</Text>
                 )}
-              </TouchableOpacity>
+              </PressableScale>
             </View>
-          </View>
+          </MotionView>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>

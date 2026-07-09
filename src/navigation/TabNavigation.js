@@ -22,6 +22,9 @@ export default function TabNavigation() {
       screenOptions={{
         headerShown: false,
 
+        // Cross-fade + slight shift between tabs instead of an instant swap.
+        animation: 'shift',
+
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.tabInactive,
 

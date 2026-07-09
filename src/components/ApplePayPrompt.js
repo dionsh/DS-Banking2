@@ -10,6 +10,7 @@ import { StatusBar } from "expo-status-bar";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { MotionView, PressableScale } from "./motion";
 
 /*
  * Full-screen prompt shown after login when the user's card is not yet in
@@ -38,27 +39,31 @@ export default function ApplePayPrompt({ visible, onAdd, onClose }) {
       <View style={styles.container}>
         {/* Centered hero */}
         <View style={styles.hero}>
-          <View style={styles.logoRow}>
+          <MotionView from="zoom" spring delay={80} style={styles.logoRow}>
             <FontAwesome5 name="apple" size={60} color={colors.text} />
             <Text style={styles.payText}>Pay</Text>
-          </View>
+          </MotionView>
 
-          <Text style={styles.title}>{t("applepay.promptTitle")}</Text>
-          <Text style={styles.subtitle}>
-            {t("applepay.promptSub")}
-          </Text>
+          <MotionView from="down" delay={220}>
+            <Text style={styles.title}>{t("applepay.promptTitle")}</Text>
+          </MotionView>
+          <MotionView from="down" delay={300}>
+            <Text style={styles.subtitle}>
+              {t("applepay.promptSub")}
+            </Text>
+          </MotionView>
         </View>
 
         {/* Bottom actions */}
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.addBtn} onPress={onAdd} activeOpacity={0.85}>
+        <MotionView from="down" delay={380} style={styles.actions}>
+          <PressableScale style={styles.addBtn} scaleTo={0.95} onPress={onAdd}>
             <Text style={styles.addBtnText}>{t("applepay.addCard")}</Text>
-          </TouchableOpacity>
+          </PressableScale>
 
-          <TouchableOpacity style={styles.notNow} onPress={onClose}>
+          <PressableScale style={styles.notNow} scaleTo={0.95} onPress={onClose}>
             <Text style={styles.notNowText}>{t("applepay.notNow")}</Text>
-          </TouchableOpacity>
-        </View>
+          </PressableScale>
+        </MotionView>
       </View>
     </Modal>
   );

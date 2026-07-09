@@ -56,11 +56,16 @@ export default function SplitBill() {
   // ----- friend request state -----
   const [incoming, setIncoming] = useState([]);
   const [sent, setSent] = useState([]);
-  const [friendEmail, setFriendEmail] = useState("");
+  // One or more friends to split with. Starts with a single empty input;
+  // "Add Another Friend" appends more.
+  const [friendEmails, setFriendEmails] = useState([""]);
   const [reqTotal, setReqTotal] = useState("");
   const [reqNote, setReqNote] = useState("");
   const [sending, setSending] = useState(false);
   const [busyRequest, setBusyRequest] = useState(null); // request id being answered
+
+  const MAX_FRIENDS = 10;
+  const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
   // ----- instant split state (the original calculator) -----
   const [total, setTotal] = useState("");
@@ -123,21 +128,47 @@ export default function SplitBill() {
     setUser(updatedUser);
   };
 
-  /* ---------- send a request to a friend ---------- */
+  /* ---------- send a request to one or more friends ---------- */
 
   const reqTotalNum = parseFloat(String(reqTotal).replace(",", ".")) || 0;
-  const reqShare = reqTotalNum > 0 ? reqTotalNum / 2 : 0;
+  // Everyone at the table = the friends entered + me. Each pays an equal share.
+  const filledEmails = friendEmails.map((e) => e.trim()).filter(Boolean);
+  const participants = filledEmails.length + 1;
+  const reqShare = reqTotalNum > 0 && filledEmails.length > 0 ? reqTotalNum / participants : 0;
+
+  const setEmailAt = (i, val) =>
+    setFriendEmails((arr) => arr.map((e, idx) => (idx === i ? val : e)));
+  const addFriend = () =>
+    setFriendEmails((arr) => (arr.length >= MAX_FRIENDS ? arr : [...arr, ""]));
+  const removeFriendAt = (i) =>
+    setFriendEmails((arr) => (arr.length <= 1 ? arr : arr.filter((_, idx) => idx !== i)));
 
   const sendRequest = async () => {
-    const email = friendEmail.trim();
-    if (!email) {
-      Alert.alert("Missing email", "Enter the DS Banking email of the friend you want to split with.");
+    const emails = friendEmails.map((e) => e.trim()).filter(Boolean);
+
+    if (emails.length === 0) {
+      Alert.alert(
+        "Missing email",
+        "Enter the DS Banking email of at least one friend you want to split with."
+      );
+      return;
+    }
+    const invalid = emails.find((e) => !EMAIL_RE.test(e));
+    if (invalid) {
+      Alert.alert("Invalid email", `"${invalid}" doesn't look like a valid email address.`);
+      return;
+    }
+    // Case-insensitive duplicate guard (the backend enforces this too).
+    const lower = emails.map((e) => e.toLowerCase());
+    if (new Set(lower).size !== lower.length) {
+      Alert.alert("Duplicate friend", "You've entered the same email more than once.");
       return;
     }
     if (reqTotalNum <= 0) {
       Alert.alert(t("common.error"), t("split.invalidAmount"));
       return;
     }
+
     setSending(true);
     try {
       const res = await fetch(`${API_BASE}/create_split_request.php`, {
@@ -145,7 +176,7 @@ export default function SplitBill() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.user_id,
-          email,
+          emails,
           total: reqTotalNum,
           note: reqNote.trim(),
         }),
@@ -154,9 +185,9 @@ export default function SplitBill() {
       if (data.status === "success") {
         Alert.alert(
           "Request sent ✉️",
-          `${data.friend_name} was asked to pay ${eur(data.share)} — half of ${eur(reqTotalNum)}. You'll get a notification when they respond.`
+          `${data.message} You'll get a notification when they respond.`
         );
-        setFriendEmail("");
+        setFriendEmails([""]);
         setReqTotal("");
         setReqNote("");
         load(true);
@@ -332,7 +363,8 @@ export default function SplitBill() {
       });
       const data = await res.json();
 
-      if (data.status === "success" && data.is_receipt && Number(data.total) > 0) {
+      if (data.status === "success" && data.valid) {
+        // All three required fields (total, date, serial number) were found.
         const result = {
           total: Number(data.total),
           id: data.receipt_id ? String(data.receipt_id) : "",
@@ -342,15 +374,13 @@ export default function SplitBill() {
         setTotal(result.total.toFixed(2));
         if (!label.trim()) setLabel(result.id ? "Receipt " + result.id : "Scanned receipt");
         setScannerOpen(false);
-      } else if (data.status === "success" && !data.is_receipt) {
-        Alert.alert(
-          "No receipt detected",
-          "That doesn't look like a receipt. Make sure the total, date and receipt number are clearly visible, then try again."
-        );
       } else if (data.status === "success") {
+        // Recognised the request but a required field (TOTALI NE EURO / date /
+        // NR. SERIK) was missing — the receipt is not valid.
         Alert.alert(
-          "Couldn't read the total",
-          "I couldn't find a total on that receipt. Try again with better lighting, or type the amount manually."
+          "Receipt not valid",
+          data.message ||
+            "This receipt could not be validated because the required information is missing."
         );
       } else {
         Alert.alert(
@@ -505,20 +535,47 @@ export default function SplitBill() {
             )}
 
             {/* ----- new request form ----- */}
-            <Text style={styles.sectionTitle}>Split a bill with a friend</Text>
+            <Text style={styles.sectionTitle}>
+              {filledEmails.length > 1 ? "Split a bill with friends" : "Split a bill with a friend"}
+            </Text>
             <View style={styles.card}>
-              <Text style={styles.label}>FRIEND'S DS BANKING EMAIL</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="friend@email.com"
-                placeholderTextColor={colors.placeholder}
-                value={friendEmail}
-                onChangeText={setFriendEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
+              <Text style={styles.label}>
+                {friendEmails.length > 1 ? "FRIENDS' DS BANKING EMAILS" : "FRIEND'S DS BANKING EMAIL"}
+              </Text>
+
+              {friendEmails.map((em, i) => (
+                <View key={i} style={styles.emailRow}>
+                  <TextInput
+                    style={[styles.textInput, { flex: 1 }]}
+                    placeholder={i === 0 ? "friend@email.com" : "another.friend@email.com"}
+                    placeholderTextColor={colors.placeholder}
+                    value={em}
+                    onChangeText={(v) => setEmailAt(i, v)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                  />
+                  {friendEmails.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.removeEmailBtn}
+                      onPress={() => removeFriendAt(i)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons name="close-circle" size={22} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+
+              {friendEmails.length < MAX_FRIENDS && (
+                <TouchableOpacity style={styles.addFriendBtn} onPress={addFriend} activeOpacity={0.7}>
+                  <MaterialCommunityIcons name="account-plus-outline" size={18} color={colors.accent} />
+                  <Text style={styles.addFriendText}>Add Another Friend</Text>
+                </TouchableOpacity>
+              )}
+
               <Text style={styles.emailHint}>
-                We'll check the account exists before the request is sent.
+                We'll check each account exists before the request is sent.
               </Text>
 
               <Text style={styles.label}>{t("split.totalBill")}</Text>
@@ -541,16 +598,19 @@ export default function SplitBill() {
                 maxLength={80}
               />
 
-              {reqTotalNum > 0 && (
-                <View style={styles.halfRow}>
-                  <View style={styles.halfBox}>
-                    <Text style={styles.halfLabel}>You pay</Text>
-                    <Text style={styles.halfValue}>{eur(reqShare)}</Text>
+              {reqTotalNum > 0 && filledEmails.length > 0 && (
+                <View style={styles.splitPreview}>
+                  <View style={styles.splitPreviewTop}>
+                    <MaterialCommunityIcons name="account-group" size={20} color={colors.accent} />
+                    <Text style={styles.splitPreviewLabel}>
+                      Split between {participants} {participants === 1 ? "person" : "people"} · you + {filledEmails.length}{" "}
+                      {filledEmails.length === 1 ? "friend" : "friends"}
+                    </Text>
                   </View>
-                  <MaterialCommunityIcons name="call-split" size={22} color={colors.textMuted} />
-                  <View style={styles.halfBox}>
-                    <Text style={styles.halfLabel} numberOfLines={1}>Your friend pays</Text>
-                    <Text style={styles.halfValue}>{eur(reqShare)}</Text>
+                  <View style={styles.splitPreviewDivider} />
+                  <View style={styles.splitPreviewRow}>
+                    <Text style={styles.splitPreviewEachLabel}>Each person pays</Text>
+                    <Text style={styles.splitPreviewEach}>{eur(reqShare)}</Text>
                   </View>
                 </View>
               )}
@@ -565,12 +625,15 @@ export default function SplitBill() {
                 ) : (
                   <>
                     <MaterialCommunityIcons name="send" size={18} color="#fff" />
-                    <Text style={styles.confirmText}>  Send Request</Text>
+                    <Text style={styles.confirmText}>
+                      {"  "}
+                      {filledEmails.length > 1 ? `Send ${filledEmails.length} Requests` : "Send Request"}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
               <Text style={styles.formHint}>
-                Nothing is charged now — your friend pays their half only if they accept.
+                Nothing is charged now — each friend pays their share only if they accept.
               </Text>
             </View>
 
@@ -863,6 +926,38 @@ const makeStyles = (c) =>
     },
     halfLabel: { fontSize: 12, color: c.textSecondary },
     halfValue: { fontSize: 18, fontWeight: "800", color: c.accent, marginTop: 3 },
+
+    // multi-friend email inputs
+    emailRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+    removeEmailBtn: { padding: 2 },
+    addFriendBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: c.accent,
+      borderStyle: "dashed",
+      marginTop: 2,
+    },
+    addFriendText: { color: c.accent, fontWeight: "700", fontSize: 13 },
+
+    // per-person split preview
+    splitPreview: {
+      backgroundColor: c.surfaceAlt,
+      borderRadius: 16,
+      padding: 16,
+      marginTop: 20,
+    },
+    splitPreviewTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+    splitPreviewLabel: { flex: 1, fontSize: 13, color: c.textSecondary, fontWeight: "600" },
+    splitPreviewDivider: { height: 1, backgroundColor: c.divider, marginVertical: 12 },
+    splitPreviewRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    splitPreviewEachLabel: { fontSize: 14, color: c.textSecondary },
+    splitPreviewEach: { fontSize: 22, fontWeight: "800", color: c.accent },
 
     formHint: { fontSize: 12, color: c.textMuted, textAlign: "center", marginTop: 12, lineHeight: 17 },
 

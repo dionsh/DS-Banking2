@@ -56,6 +56,10 @@ export default function DrawerNavigation() {
         drawerActiveTintColor: colors.accent,
         drawerInactiveTintColor: colors.drawerInactive,
         drawerActiveBackgroundColor: colors.drawerActiveBg,
+        // The screen slides along with the drawer (instead of being covered),
+        // with a soft dim behind it — Reanimated-driven, runs on the UI thread.
+        drawerType: 'slide',
+        overlayColor: 'rgba(0, 0, 0, 0.32)',
         drawerStyle: {
           backgroundColor: colors.background,
           width: 260,

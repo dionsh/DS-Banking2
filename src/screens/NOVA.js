@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   TextInput,
@@ -23,6 +22,7 @@ import * as Speech from "expo-speech";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { MotionView, PressableScale, Pulse } from "../components/motion";
 
 // type -> translation key for the quick-question chips and their replies.
 const QUICK_ACTIONS = [
@@ -317,7 +317,11 @@ export default function NOVA() {
   };
 
   const renderItem = ({ item }) => (
-    <View
+    // Each new message springs up into the thread as it arrives.
+    <MotionView
+      from="down"
+      distance={12}
+      spring
       style={[
         styles.messageBubble,
         item.sender === "user" ? styles.userBubble : styles.botBubble,
@@ -335,25 +339,27 @@ export default function NOVA() {
           </Text>
         ) : (
           <View style={styles.confirmRow}>
-            <TouchableOpacity
+            <PressableScale
               style={styles.yesBtn}
+              scaleTo={0.93}
               onPress={() => handleConfirm(item, true)}
               disabled={loadingReply}
             >
               <MaterialCommunityIcons name="check" size={16} color="#fff" />
               <Text style={styles.yesText}>Yes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </PressableScale>
+            <PressableScale
               style={styles.noBtn}
+              scaleTo={0.93}
               onPress={() => handleConfirm(item, false)}
               disabled={loadingReply}
             >
               <MaterialCommunityIcons name="close" size={16} color={colors.dangerText} />
               <Text style={styles.noText}>No</Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         ))}
-    </View>
+    </MotionView>
   );
 
   if (!user) {
@@ -368,20 +374,22 @@ export default function NOVA() {
     <View style={styles.container}>
       <SafeAreaView edges={["top"]} style={{ backgroundColor: colors.primary }}>
         <View style={styles.header}>
-          <TouchableOpacity
+          <PressableScale
+            scaleTo={0.85}
+            hitSlop={8}
             onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
           >
             <MaterialCommunityIcons name="menu" size={28} color="white" />
-          </TouchableOpacity>
+          </PressableScale>
 
           <Text style={styles.headerTitle}>NOVA</Text>
-          <TouchableOpacity onPress={toggleSpeak}>
+          <PressableScale scaleTo={0.85} hitSlop={8} onPress={toggleSpeak}>
             <MaterialCommunityIcons
               name={speakEnabled ? "volume-high" : "volume-off"}
               size={26}
               color={speakEnabled ? "#8E95F2" : "white"}
             />
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </SafeAreaView>
 
@@ -401,10 +409,10 @@ export default function NOVA() {
         />
 
         {loadingReply && (
-          <View style={[styles.messageBubble, styles.botBubble, styles.typingBubble]}>
+          <MotionView from="down" distance={8} style={[styles.messageBubble, styles.botBubble, styles.typingBubble]}>
             <ActivityIndicator size="small" color={colors.accent} />
             <Text style={styles.typingText}>{t("nova.typing")}</Text>
-          </View>
+          </MotionView>
         )}
 
         <View style={styles.bottomArea}>
@@ -415,39 +423,45 @@ export default function NOVA() {
             keyboardShouldPersistTaps="handled"
           >
             {QUICK_ACTIONS.map((q) => (
-              <TouchableOpacity
+              <PressableScale
                 key={q.type}
                 style={styles.quickBtn}
+                scaleTo={0.92}
                 onPress={() => handleAction(q.type, t(q.labelKey))}
                 disabled={loadingReply}
               >
                 <Text style={styles.quickText}>{t(q.labelKey)}</Text>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
             {ACTION_CHIPS.map((q) => (
-              <TouchableOpacity
+              <PressableScale
                 key={q.label}
                 style={styles.quickBtn}
+                scaleTo={0.92}
                 onPress={() => sendMessage(q.text)}
                 disabled={loadingReply}
               >
                 <Text style={styles.quickText}>{q.label}</Text>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
           </ScrollView>
 
           <View style={styles.inputBar}>
-            <TouchableOpacity
-              style={[styles.micBtn, recording && styles.micBtnActive]}
-              onPress={recording ? stopRecording : startRecording}
-              disabled={loadingReply && !recording}
-            >
-              <MaterialCommunityIcons
-                name={recording ? "stop" : "microphone"}
-                size={22}
-                color={recording ? "white" : colors.accent}
-              />
-            </TouchableOpacity>
+            {/* Pulses while NOVA is listening */}
+            <Pulse enabled={recording} maxScale={1.12}>
+              <PressableScale
+                style={[styles.micBtn, recording && styles.micBtnActive]}
+                scaleTo={0.88}
+                onPress={recording ? stopRecording : startRecording}
+                disabled={loadingReply && !recording}
+              >
+                <MaterialCommunityIcons
+                  name={recording ? "stop" : "microphone"}
+                  size={22}
+                  color={recording ? "white" : colors.accent}
+                />
+              </PressableScale>
+            </Pulse>
             <TextInput
               style={styles.input}
               value={input}
@@ -459,16 +473,17 @@ export default function NOVA() {
               editable={!loadingReply && !recording}
               multiline
             />
-            <TouchableOpacity
+            <PressableScale
               style={[
                 styles.sendBtn,
                 (!input.trim() || loadingReply) && styles.sendBtnDisabled,
               ]}
+              scaleTo={0.88}
               onPress={() => sendMessage()}
               disabled={!input.trim() || loadingReply}
             >
               <MaterialCommunityIcons name="send" size={20} color="white" />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
       </KeyboardAvoidingView>

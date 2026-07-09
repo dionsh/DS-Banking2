@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   Alert,
@@ -24,6 +23,7 @@ import Avatar, {
   SHOE_COLORS,
 } from "../components/Avatar";
 import CharacterPrompt from "../components/CharacterPrompt";
+import { MotionView, PressableScale } from "../components/motion";
 
 const STORAGE_KEY = "avatar_config";
 
@@ -130,8 +130,8 @@ function StripeOverlay({ w, h, stroke }) {
 function StyleChip({ label, price, active, locked, isBuying, onPress, c, styles }) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   return (
-    <TouchableOpacity
-      activeOpacity={0.8}
+    <PressableScale
+      scaleTo={0.92}
       style={[styles.styleChip, active && styles.styleChipActive, locked && styles.styleChipLocked]}
       disabled={isBuying}
       onPress={onPress}
@@ -165,7 +165,7 @@ function StyleChip({ label, price, active, locked, isBuying, onPress, c, styles 
           )}
         </>
       )}
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 
@@ -339,19 +339,19 @@ export default function MyCharacter() {
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
           <MaterialCommunityIcons name="menu" size={28} color="#fff" />
-        </TouchableOpacity>
+        </PressableScale>
         <Text style={styles.headerTitle}>{t("menu.myCharacter")}</Text>
-        <TouchableOpacity style={styles.pointsPill} onPress={() => navigation.navigate("Rewards")}>
+        <PressableScale style={styles.pointsPill} scaleTo={0.9} onPress={() => navigation.navigate("Rewards")}>
           <MaterialCommunityIcons name="star-four-points" size={15} color="#fff" />
           <Text style={styles.pointsPillText}>{points}</Text>
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
-        {/* Preview */}
-        <View style={styles.stage}>
+        {/* Preview — the avatar springs onto the stage */}
+        <MotionView from="zoom" spring style={styles.stage}>
           <Avatar
             size={180}
             gender={cfg.gender}
@@ -365,28 +365,28 @@ export default function MyCharacter() {
             shoeStyle={cfg.shoeStyle}
             shoeColor={cfg.shoeColor}
           />
-        </View>
+        </MotionView>
 
         {!loaded ? (
           <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 30 }} />
         ) : (
           <>
             {/* Shop intro / earn-points hint */}
-            <View style={styles.shopBar}>
+            <MotionView from="down" delay={120} style={styles.shopBar}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.shopTitle}>{t("avatar.shopTitle")}</Text>
                 <Text style={styles.shopSub}>
                   {online ? t("avatar.shopSub") : t("avatar.offline")}
                 </Text>
               </View>
-              <TouchableOpacity style={styles.earnBtn} onPress={() => navigation.navigate("Rewards")}>
+              <PressableScale style={styles.earnBtn} scaleTo={0.93} onPress={() => navigation.navigate("Rewards")}>
                 <MaterialCommunityIcons name="gamepad-variant-outline" size={16} color="#fff" />
                 <Text style={styles.earnBtnText}>{t("avatar.earn")}</Text>
-              </TouchableOpacity>
-            </View>
+              </PressableScale>
+            </MotionView>
 
             {/* Customizer */}
-            <View style={styles.panel}>
+            <MotionView from="down" delay={200} style={styles.panel}>
               {/* Gender — man / woman */}
               <View style={styles.slot}>
                 <Text style={styles.slotLabel}>{t("avatar.gender")}</Text>
@@ -394,9 +394,10 @@ export default function MyCharacter() {
                   {["male", "female"].map((g) => {
                     const active = cfg.gender === g;
                     return (
-                      <TouchableOpacity
+                      <PressableScale
                         key={g}
                         style={[styles.styleChip, active && styles.styleChipActive]}
+                        scaleTo={0.92}
                         onPress={() => selectGender(g)}
                       >
                         <MaterialCommunityIcons
@@ -407,7 +408,7 @@ export default function MyCharacter() {
                         <Text style={[styles.styleChipText, active && styles.styleChipTextActive]}>
                           {t("avatar." + g)}
                         </Text>
-                      </TouchableOpacity>
+                      </PressableScale>
                     );
                   })}
                 </View>
@@ -453,13 +454,14 @@ export default function MyCharacter() {
                       {slot.colors.map((color) => {
                         const active = cfg[slot.colorField] === color;
                         return (
-                          <TouchableOpacity
+                          <PressableScale
                             key={color}
                             style={[
                               styles.swatch,
                               { backgroundColor: color },
                               active && styles.swatchActive,
                             ]}
+                            scaleTo={0.85}
                             onPress={() => set(slot.colorField, color)}
                           />
                         );
@@ -468,16 +470,17 @@ export default function MyCharacter() {
                   </View>
                 );
               })}
-            </View>
+            </MotionView>
           </>
         )}
       </ScrollView>
 
       {/* Save button — persists the character */}
       {loaded && (
-        <View style={styles.footer}>
-          <TouchableOpacity
+        <MotionView from="up" distance={10} style={styles.footer}>
+          <PressableScale
             style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+            scaleTo={0.95}
             onPress={handleSave}
             disabled={saving}
           >
@@ -489,8 +492,8 @@ export default function MyCharacter() {
                 <Text style={styles.saveBtnText}>{t("avatar.save")}</Text>
               </>
             )}
-          </TouchableOpacity>
-        </View>
+          </PressableScale>
+        </MotionView>
       )}
 
       <CharacterPrompt visible={showWelcome} onContinue={() => setShowWelcome(false)} />

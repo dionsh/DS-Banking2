@@ -22,6 +22,8 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
 import { buildStatementHtml } from "../utils/statementHtml";
 import { buildReceiptHtml } from "../utils/receiptHtml";
+import AnimatedNumber from "../components/AnimatedNumber";
+import { AnimatedListItem, MotionView, PressableScale, SkeletonBlock } from "../components/motion";
 
 export default function Transactions() {
   const navigation = useNavigation();
@@ -157,7 +159,7 @@ export default function Transactions() {
   }
 };
 
-const renderItem = ({ item }) => {
+const renderItem = ({ item, index }) => {
 
   const isSender = item.sender_name === user.name
     && item.sender_surname === user.surname;
@@ -173,9 +175,10 @@ const renderItem = ({ item }) => {
     : `${item.sender_name} ${item.sender_surname}`;
 
   return (
-    <TouchableOpacity
+    <AnimatedListItem index={index}>
+    <PressableScale
       style={styles.transactionRow}
-      activeOpacity={0.6}
+      scaleTo={0.98}
       onPress={() => openReceipt(item)}
     >
       <View style={{ flex: 1 }}>
@@ -199,14 +202,35 @@ const renderItem = ({ item }) => {
           <Text style={styles.receiptHintText}>Receipt</Text>
         </View>
       </View>
-    </TouchableOpacity>
+    </PressableScale>
+    </AnimatedListItem>
   );
 };
   if (loading) {
+    // Skeleton list while transactions load — mirrors the final layout.
     return (
-      <View style={[styles.container, { justifyContent: "center" }]}>
-        <ActivityIndicator size="large" color={colors.accent} />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={{ width: 28 }} />
+          <SkeletonBlock width={140} height={20} radius={6} />
+          <View style={{ width: 26 }} />
+        </View>
+        <View style={{ alignItems: "center", paddingVertical: 24 }}>
+          <SkeletonBlock width={120} height={12} radius={5} />
+          <SkeletonBlock width={160} height={26} radius={8} style={{ marginTop: 10 }} />
+        </View>
+        <View style={{ paddingHorizontal: 20 }}>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 20 }}>
+              <View>
+                <SkeletonBlock width={150} height={14} radius={5} />
+                <SkeletonBlock width={90} height={10} radius={4} style={{ marginTop: 8 }} />
+              </View>
+              <SkeletonBlock width={80} height={14} radius={5} />
+            </View>
+          ))}
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -214,23 +238,22 @@ const renderItem = ({ item }) => {
     <SafeAreaView style={styles.container}>
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.openDrawer()}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.openDrawer()}>
           <MaterialCommunityIcons name="menu" size={28} color={colors.accent} />
-        </TouchableOpacity>
+        </PressableScale>
 
         <Text style={styles.headerText}>{t("menu.transactions")}</Text>
 
-        <TouchableOpacity onPress={openStatement}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={openStatement}>
           <MaterialCommunityIcons name="file-document-outline" size={26} color={colors.accent} />
-        </TouchableOpacity>
+        </PressableScale>
       </View>
 
-      <View style={styles.balanceContainer}>
+      <MotionView from="down" style={styles.balanceContainer}>
         <Text style={styles.balanceLabel}>{t("transactions.availableCondition")}</Text>
-        <Text style={styles.balanceValue}>
-          {format(user.balance)}
-        </Text>
-      </View>
+        {/* Counts up to the available balance on entry */}
+        <AnimatedNumber value={user.balance} format={format} style={styles.balanceValue} duration={800} />
+      </MotionView>
 
       <FlatList
         data={transactions}

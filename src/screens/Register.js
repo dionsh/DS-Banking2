@@ -4,7 +4,6 @@ import {
   View,
   Text,
   Image,
-  TouchableOpacity,
   TextInput,
   ScrollView,
   KeyboardAvoidingView,
@@ -13,6 +12,7 @@ import {
 import { API_BASE } from '../config';
 import { useTheme } from '../theme/ThemeContext';
 import { useLanguage } from '../i18n/LanguageContext';
+import { MotionView, PressableScale, ShakeView } from '../components/motion';
 
 const Register = ({ navigation }) => {
   const { colors } = useTheme();
@@ -27,6 +27,9 @@ const Register = ({ navigation }) => {
     pin: ''
   });
 
+  // Bumping this counter replays the error shake on the form.
+  const [shakeTick, setShakeTick] = useState(0);
+
   const handleInputChange = (name, value) => {
     setFormData({ ...formData, [name]: value });
   };
@@ -37,11 +40,13 @@ const Register = ({ navigation }) => {
   const signup = () => {
 
     if (!formData.name || !formData.surname || !formData.email || !formData.password || !formData.pin) {
+      setShakeTick((n) => n + 1);
       alert(t("register.fillFields"));
       return;
     }
 
     if (formData.pin.length !== 4) {
+      setShakeTick((n) => n + 1);
       alert(t("register.fillFields"));
       return;
     }
@@ -64,11 +69,15 @@ const Register = ({ navigation }) => {
           />
         </View>
 
-        <View style={styles.content}>
-          <Text style={styles.title}>{t("signup.register")}</Text>
-          <Text style={styles.subtitle}>{t("register.subtitle")}</Text>
+        <ShakeView trigger={shakeTick} style={styles.content}>
+          <MotionView from="down" delay={0}>
+            <Text style={styles.title}>{t("signup.register")}</Text>
+          </MotionView>
+          <MotionView from="down" delay={60}>
+            <Text style={styles.subtitle}>{t("register.subtitle")}</Text>
+          </MotionView>
 
-          <View style={styles.form}>
+          <MotionView from="down" delay={140} style={styles.form}>
             <TextInput
               style={styles.input}
               placeholder={t("common.name")}
@@ -109,22 +118,28 @@ const Register = ({ navigation }) => {
               value={formData.pin}
               onChangeText={(val) => handleInputChange('pin', val)}
             />
-          </View>
+          </MotionView>
 
-          <TouchableOpacity
+          <MotionView from="down" delay={240} style={{ width: '100%' }}>
+          <PressableScale
             style={styles.primaryBtn}
+            scaleTo={0.95}
             onPress={signup}
           >
             <Text style={styles.primaryBtnText}>{t("register.createAccount")}</Text>
-          </TouchableOpacity>
+          </PressableScale>
+          </MotionView>
 
-          <TouchableOpacity
+          <MotionView from="down" delay={300} style={{ width: '100%' }}>
+          <PressableScale
             style={styles.secondaryBtn}
+            scaleTo={0.95}
             onPress={() => navigation.navigate('SignUp')}
           >
             <Text style={styles.secondaryBtnText}>{t("login.goBack")}</Text>
-          </TouchableOpacity>
-        </View>
+          </PressableScale>
+          </MotionView>
+        </ShakeView>
 
       </ScrollView>
     </KeyboardAvoidingView>

@@ -4,7 +4,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   TextInput,
   Image,
   ScrollView,
@@ -20,6 +19,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
 import { confirmOverBudget } from "../utils/budgetGuard";
+import { MotionView, PressableScale, SuccessOverlay } from "../components/motion";
 
 export default function TopUp() {
   const navigation = useNavigation();
@@ -40,6 +40,10 @@ export default function TopUp() {
   const [countryCode, setCountryCode] = useState("XK");
   const [callingCode, setCallingCode] = useState("+383");
   const [phoneNumber, setPhoneNumber] = useState("");
+
+  // Animated success confirmation (shown instead of a plain alert).
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successSummary, setSuccessSummary] = useState("");
 
   const [amount, setAmount] = useState("");
   const [receiverName, setReceiverName] = useState("");
@@ -138,7 +142,9 @@ export default function TopUp() {
 
       const data = await response.json();
       if (data.status === "success") {
-        Alert.alert(t("common.success"), t("topup.phoneChargeSent"));
+        // Animated confirmation instead of a plain alert.
+        setSuccessSummary(`${totalAmount.toFixed(2)} EUR → ${callingCode} ${phoneNumber}`);
+        setSuccessOpen(true);
         setCardData({ ...cardData, balance: (cardData.balance - totalAmount).toFixed(2) });
         setSelectedCompany(null);
         setPhoneNumber("");
@@ -160,9 +166,9 @@ export default function TopUp() {
 
       <SafeAreaView edges={['top']} style={styles.safeAreaTop}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.openDrawer()}>
+          <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.openDrawer()}>
             <MaterialCommunityIcons name="menu" size={28} color="white" />
-          </TouchableOpacity>
+          </PressableScale>
           <Text style={styles.headerTitle}>{t("menu.topUp")}</Text>
           <View style={{ width: 28 }} />
         </View>
@@ -177,19 +183,20 @@ export default function TopUp() {
             {!cardData ? (
               <Text style={{ textAlign: "center", color: colors.textSecondary }}>{t("topup.noCard")}</Text>
             ) : (
-              <View style={styles.cardInfo}>
+              <MotionView from="down" style={styles.cardInfo}>
                 <Text style={styles.label}>{t("topup.from")}</Text>
                 <Text style={styles.cardNumber}>{cardData.card_number}</Text>
                 <Text style={styles.label}>{t("common.balance")}:</Text>
                 <Text style={styles.balance}>{format(cardData.balance)}</Text>
-              </View>
+              </MotionView>
             )}
 
             <Text style={[styles.sectionTitle, { textAlign: "left" }]}>{t("topup.chooseCompany")}</Text>
             <View style={styles.companyContainer}>
               {Array.isArray(companies) && companies.map((c) => (
-                <TouchableOpacity
+                <PressableScale
                   key={c.id}
+                  scaleTo={0.93}
                   onPress={() => handleSelectCompany(c.id)}
                   style={[
                     styles.companyButton,
@@ -201,7 +208,7 @@ export default function TopUp() {
   style={styles.companyImage}
 />
                   <Text style={styles.companyText}>{c.name}</Text>
-                </TouchableOpacity>
+                </PressableScale>
               ))}
             </View>
 
@@ -239,13 +246,14 @@ export default function TopUp() {
             />
             <View style={styles.amountButtons}>
               {[1, 3, 5, 10].map((val) => (
-                <TouchableOpacity
+                <PressableScale
                   key={val}
                   style={styles.amountButton}
+                  scaleTo={0.9}
                   onPress={() => handleAmountButton(val)}
                 >
                   <Text style={styles.amountButtonText}>{val} EUR</Text>
-                </TouchableOpacity>
+                </PressableScale>
               ))}
             </View>
 
@@ -266,12 +274,24 @@ export default function TopUp() {
               onChangeText={setReceiverSurname}
             />
 
-            <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm} disabled={sending}>
+            <PressableScale style={styles.confirmButton} scaleTo={0.95} onPress={handleConfirm} disabled={sending}>
               <Text style={styles.confirmText}>{sending ? t("topup.sending") : t("common.confirm")}</Text>
-            </TouchableOpacity>
+            </PressableScale>
           </ScrollView>
         )}
       </View>
+
+      {/* Animated top-up confirmation */}
+      <SuccessOverlay
+        visible={successOpen}
+        title={t("common.success")}
+        subtitle={successSummary}
+        color={colors.success}
+        cardColor={colors.card}
+        textColor={colors.text}
+        subTextColor={colors.textSecondary}
+        onDone={() => setSuccessOpen(false)}
+      />
     </View>
   );
 }

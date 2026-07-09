@@ -1,9 +1,10 @@
 import React, { useMemo } from "react";
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Modal, View, Text, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import Avatar from "./Avatar";
+import { MotionView, PressableScale } from "./motion";
 
 /*
  * Full-screen welcome shown when the user first opens My Character (mirrors the
@@ -22,20 +23,24 @@ export default function CharacterPrompt({ visible, onContinue }) {
 
       <View style={styles.container}>
         <View style={styles.hero}>
-          <View style={styles.avatarRow}>
+          <MotionView from="zoom" spring delay={80} style={styles.avatarRow}>
             <Avatar size={120} gender="male" hairStyle="short" shirtStyle="hoodie" shirtColor="#4F46E5" />
             <Avatar size={120} gender="female" hairStyle="long" hairColor="#5A3A22" shirtStyle="tshirt" shirtColor="#E53935" />
-          </View>
+          </MotionView>
 
-          <Text style={styles.title}>{t("character.promptTitle")}</Text>
-          <Text style={styles.subtitle}>{t("character.promptSub")}</Text>
+          <MotionView from="down" delay={220}>
+            <Text style={styles.title}>{t("character.promptTitle")}</Text>
+          </MotionView>
+          <MotionView from="down" delay={300}>
+            <Text style={styles.subtitle}>{t("character.promptSub")}</Text>
+          </MotionView>
         </View>
 
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.continueBtn} onPress={onContinue} activeOpacity={0.85}>
+        <MotionView from="down" delay={380} style={styles.actions}>
+          <PressableScale style={styles.continueBtn} scaleTo={0.95} onPress={onContinue}>
             <Text style={styles.continueText}>{t("character.continue")}</Text>
-          </TouchableOpacity>
-        </View>
+          </PressableScale>
+        </MotionView>
       </View>
     </Modal>
   );

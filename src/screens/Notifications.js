@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   Alert,
@@ -15,6 +14,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { AnimatedListItem, MotionView, PressableScale } from "../components/motion";
 
 // Map a notification type to an icon + accent color.
 function typeVisual(type, colors) {
@@ -114,10 +114,11 @@ export default function Notifications() {
     ]);
   };
 
-  const renderItem = ({ item }) => {
+  const renderItem = ({ item, index }) => {
     const v = typeVisual(item.type, colors);
     const unread = Number(item.is_read) === 0;
     return (
+      <AnimatedListItem index={index}>
       <View style={[styles.row, unread && styles.rowUnread]}>
         <View style={[styles.iconWrap, { backgroundColor: colors.surfaceAlt }]}>
           <MaterialCommunityIcons name={v.icon} size={22} color={v.color} />
@@ -129,20 +130,21 @@ export default function Notifications() {
         </View>
         {unread && <View style={styles.unreadDot} />}
       </View>
+      </AnimatedListItem>
     );
   };
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="arrow-left" size={26} color="#fff" />
-        </TouchableOpacity>
+        </PressableScale>
         <Text style={styles.headerTitle}>{t("common.notifications")}</Text>
         {items.length > 0 ? (
-          <TouchableOpacity onPress={handleClear}>
+          <PressableScale scaleTo={0.85} hitSlop={8} onPress={handleClear}>
             <MaterialCommunityIcons name="trash-can-outline" size={24} color="#fff" />
-          </TouchableOpacity>
+          </PressableScale>
         ) : (
           <View style={{ width: 24 }} />
         )}
@@ -160,10 +162,10 @@ export default function Notifications() {
       {loading ? (
         <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
       ) : items.length === 0 ? (
-        <View style={styles.empty}>
+        <MotionView from="zoom" spring style={styles.empty}>
           <MaterialCommunityIcons name="bell-outline" size={52} color={colors.textMuted} />
           <Text style={styles.emptyText}>{t("notif.empty")}</Text>
-        </View>
+        </MotionView>
       ) : (
         <FlatList
           data={items}

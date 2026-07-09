@@ -11,7 +11,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   Dimensions,
@@ -25,6 +24,7 @@ import { LineChart, BarChart, PieChart } from "react-native-chart-kit";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import AnimatedNumber from "../components/AnimatedNumber";
+import { MotionView, PressableScale, SkeletonBlock } from "../components/motion";
 import { makeChartConfig, hexToRgba, CATEGORY_COLORS } from "../utils/chartTheme";
 
 const screenWidth = Dimensions.get("window").width;
@@ -71,21 +71,28 @@ export default function Analytics() {
 
   const Header = (
     <View style={styles.header}>
-      <TouchableOpacity onPress={() => navigation.openDrawer()}>
+      <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.openDrawer()}>
         <MaterialCommunityIcons name="menu" size={28} color="#fff" />
-      </TouchableOpacity>
+      </PressableScale>
       <Text style={styles.headerTitle}>Analytics</Text>
-      <TouchableOpacity onPress={onRefresh}>
+      <PressableScale scaleTo={0.85} hitSlop={8} onPress={onRefresh}>
         <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
-      </TouchableOpacity>
+      </PressableScale>
     </View>
   );
 
   if (loading || !data) {
+    // Skeleton dashboard — summary card + chart placeholders.
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         {Header}
-        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 60 }} />
+        <View style={{ padding: 20 }}>
+          <SkeletonBlock height={120} radius={20} />
+          <SkeletonBlock width={180} height={16} radius={6} style={{ marginTop: 26 }} />
+          <SkeletonBlock height={200} radius={18} style={{ marginTop: 12 }} />
+          <SkeletonBlock width={180} height={16} radius={6} style={{ marginTop: 26 }} />
+          <SkeletonBlock height={200} radius={18} style={{ marginTop: 12 }} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -149,7 +156,7 @@ export default function Analytics() {
         }
       >
         {/* ----- animated summary counters ----- */}
-        <View style={styles.summaryCard}>
+        <MotionView from="down" delay={0} style={styles.summaryCard}>
           <Text style={styles.summaryMonth}>{summary.month_label}</Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -184,9 +191,10 @@ export default function Analytics() {
               </Text>
             </View>
           )}
-        </View>
+        </MotionView>
 
         {/* ----- spending categories pie ----- */}
+        <MotionView from="down" delay={100}>
         <Text style={styles.sectionTitle}>Spending categories</Text>
         <View style={styles.card}>
           {pieData.length > 0 ? (
@@ -207,8 +215,10 @@ export default function Analytics() {
             </View>
           )}
         </View>
+        </MotionView>
 
         {/* ----- income vs expenses ----- */}
+        <MotionView from="down" delay={180}>
         <Text style={styles.sectionTitle}>Income vs expenses</Text>
         <View style={styles.card}>
           <LineChart
@@ -222,8 +232,10 @@ export default function Analytics() {
             style={styles.chart}
           />
         </View>
+        </MotionView>
 
         {/* ----- weekly comparison ----- */}
+        <MotionView from="down" delay={240}>
         <Text style={styles.sectionTitle}>Weekly spending</Text>
         <View style={styles.card}>
           <BarChart
@@ -242,8 +254,10 @@ export default function Analytics() {
           />
           <Text style={styles.chartCaption}>Last 8 weeks · labels show the first day of each week</Text>
         </View>
+        </MotionView>
 
         {/* ----- savings growth ----- */}
+        <MotionView from="down" delay={300}>
         <Text style={styles.sectionTitle}>Savings growth</Text>
         <View style={styles.card}>
           <View style={styles.inlineStat}>
@@ -262,8 +276,10 @@ export default function Analytics() {
             style={styles.chart}
           />
         </View>
+        </MotionView>
 
         {/* ----- cashback + reward points counters ----- */}
+        <MotionView from="down" delay={360}>
         <Text style={styles.sectionTitle}>Rewards & cashback</Text>
         <View style={styles.twinRow}>
           <View style={[styles.card, styles.twinCard]}>
@@ -283,8 +299,10 @@ export default function Analytics() {
             <Text style={styles.twinSub}>{rewards.points} available (≈{eurShort(rewards.points / 100)})</Text>
           </View>
         </View>
+        </MotionView>
 
         {/* ----- subscriptions ----- */}
+        <MotionView from="down" delay={420}>
         <Text style={styles.sectionTitle}>Subscription expenses</Text>
         <View style={styles.card}>
           <View style={styles.subsRow}>
@@ -317,6 +335,7 @@ export default function Analytics() {
             <Text style={styles.emptyText}>No active subscriptions — €0 recurring cost. 🎉</Text>
           )}
         </View>
+        </MotionView>
 
         <Text style={styles.footNote}>
           Numbers come from your real DS Banking transactions. Moving money into savings is not

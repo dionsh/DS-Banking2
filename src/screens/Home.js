@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { DrawerActions, useFocusEffect } from "@react-navigation/native";
-import { View, StyleSheet, ScrollView, TouchableOpacity, Text, Image } from "react-native";
+import { View, StyleSheet, ScrollView, Text, Image } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect, Circle } from "react-native-svg";
 import UserCard from "../components/UserCard";
 import ApplePayPrompt from "../components/ApplePayPrompt";
+import { PressableScale, MotionView, SkeletonBlock, Pulse } from "../components/motion";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
@@ -86,46 +87,72 @@ useFocusEffect(
   }, [])
 );
 
-  const ServiceBtn = ({ icon, label, onPress }) => (
-    <TouchableOpacity style={styles.serviceBtn} onPress={onPress}>
-      <View style={styles.iconBox}>
-        <MaterialCommunityIcons name={icon} size={26} color={colors.accent} />
+  const ServiceBtn = ({ icon, label, onPress, delay = 0 }) => (
+    <MotionView from="down" delay={delay} style={styles.serviceBtn}>
+      <PressableScale onPress={onPress} scaleTo={0.92} style={styles.serviceBtnInner}>
+        <View style={styles.iconBox}>
+          <MaterialCommunityIcons name={icon} size={26} color={colors.accent} />
+        </View>
+        <Text style={styles.serviceLabel}>{label}</Text>
+      </PressableScale>
+    </MotionView>
+  );
+
+  const Header = (
+    <View style={styles.header}>
+      <PressableScale
+        scaleTo={0.85}
+        hitSlop={8}
+        onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+      >
+        <MaterialCommunityIcons name="menu" size={28} color="#FFF" />
+      </PressableScale>
+
+      <Text style={styles.headerTitle}>{t("home.title")}</Text>
+
+      <View style={styles.headerIcons}>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.navigate('Notifications')}>
+          <View>
+            <MaterialCommunityIcons name="email-outline" size={24} color="#FFF" />
+            {unread > 0 && <Pulse style={styles.badge} />}
+          </View>
+        </PressableScale>
+        <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.navigate('Profile')}>
+          <MaterialCommunityIcons name="account-circle-outline" size={24} color="#FFF" style={{marginLeft: 15}} />
+        </PressableScale>
       </View>
-      <Text style={styles.serviceLabel}>{label}</Text>
-    </TouchableOpacity>
+    </View>
   );
 
   if (!user) {
+    // Skeleton dashboard while the balance loads — mirrors the real layout so
+    // content appears in place without any jump.
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: colors.textSecondary }}>{t("home.loading")}</Text>
+      <View style={styles.container}>
+        {Header}
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <SkeletonBlock width={170} height={20} radius={6} />
+          <SkeletonBlock height={195} radius={20} style={{ marginTop: 16 }} />
+          <SkeletonBlock height={84} radius={20} style={{ marginTop: 16 }} />
+          <View style={styles.skeletonGrid}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={{ width: '23%', alignItems: 'center' }}>
+                <SkeletonBlock width={60} height={60} radius={15} />
+                <SkeletonBlock width={46} height={9} radius={4} style={{ marginTop: 8 }} />
+              </View>
+            ))}
+          </View>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
-          <MaterialCommunityIcons name="menu" size={28} color="#FFF" />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>{t("home.title")}</Text>
-
-        <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
-            <View>
-              <MaterialCommunityIcons name="email-outline" size={24} color="#FFF" />
-              {unread > 0 && <View style={styles.badge} />}
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-            <MaterialCommunityIcons name="account-circle-outline" size={24} color="#FFF" style={{marginLeft: 15}} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {Header}
 
       <ScrollView showsVerticalScrollIndicator={false}>
+       <MotionView from="down" delay={0}>
        <UserCard
   fullName={`${user.name} ${user.surname}`}
   cardNumber={user.account_number}
@@ -133,11 +160,13 @@ useFocusEffect(
   userId={user.id}
   navigation={navigation}
 />
+       </MotionView>
 
         {/* DS Banking Wrapped — story-style recap, available any time */}
-        <TouchableOpacity
+        <MotionView from="down" delay={90}>
+        <PressableScale
           style={styles.wrappedBanner}
-          activeOpacity={0.9}
+          scaleTo={0.97}
           onPress={() => navigation.navigate("DS Wrapped")}
         >
           <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
@@ -170,19 +199,22 @@ useFocusEffect(
           <View style={styles.wrappedPlay}>
             <MaterialCommunityIcons name="play" size={22} color="#241B7A" />
           </View>
-        </TouchableOpacity>
+        </PressableScale>
+        </MotionView>
 
         <View style={styles.gridContainer}>
-          <ServiceBtn icon="swap-horizontal" label={t("home.transactions")} onPress={() => navigation.navigate('Transactions')} />
-          <ServiceBtn icon="file-document-outline" label={t("home.publicServices")} onPress={() => navigation.navigate('PublicServices')} />
-          <ServiceBtn icon="refresh" label={t("home.automaticOrder")} onPress={() => navigation.navigate('AutomaticOrder')} />
-          <ServiceBtn icon="credit-card-outline" label={t("home.card")} onPress={() => navigation.navigate("Card", { user_id: user.id })} />
+          <ServiceBtn delay={160} icon="swap-horizontal" label={t("home.transactions")} onPress={() => navigation.navigate('Transactions')} />
+          <ServiceBtn delay={220} icon="file-document-outline" label={t("home.publicServices")} onPress={() => navigation.navigate('PublicServices')} />
+          <ServiceBtn delay={280} icon="refresh" label={t("home.automaticOrder")} onPress={() => navigation.navigate('AutomaticOrder')} />
+          <ServiceBtn delay={340} icon="credit-card-outline" label={t("home.card")} onPress={() => navigation.navigate("Card", { user_id: user.id })} />
         </View>
 
      <View style={styles.promoContainer}>
 
-  <TouchableOpacity
+  <MotionView from="down" delay={420} style={styles.promoWrap}>
+  <PressableScale
     style={styles.promoBox}
+    scaleTo={0.96}
     onPress={() => navigation.navigate("SavingsAccount")}
   >
      <Image
@@ -191,10 +223,13 @@ useFocusEffect(
         resizeMode="contain"
      />
 
-  </TouchableOpacity>
+  </PressableScale>
+  </MotionView>
 
-  <TouchableOpacity
+  <MotionView from="down" delay={480} style={styles.promoWrap}>
+  <PressableScale
     style={styles.promoBox}
+    scaleTo={0.96}
     onPress={() => navigation.navigate("Credit")}
   >
      <Image
@@ -203,7 +238,8 @@ useFocusEffect(
         resizeMode="contain"
      />
 
-  </TouchableOpacity>
+  </PressableScale>
+  </MotionView>
 
 </View>
       </ScrollView>
@@ -291,7 +327,13 @@ const makeStyles = (c) =>
       marginTop: 10,
       justifyContent: 'space-between'
     },
-    serviceBtn: { width: '23%', alignItems: 'center', marginBottom: 20 },
+    serviceBtn: { width: '23%', marginBottom: 20 },
+    serviceBtnInner: { width: '100%', alignItems: 'center' },
+    skeletonGrid: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 26,
+    },
     iconBox: {
       width: 60,
       height: 60,
@@ -303,7 +345,8 @@ const makeStyles = (c) =>
     },
     serviceLabel: { fontSize: 10, textAlign: 'center', fontWeight: '600', color: c.accent },
     promoContainer: { flexDirection: 'row', padding: 20, justifyContent: 'space-between' },
-    promoBox: { width: '47%', backgroundColor: c.card, borderRadius: 20, elevation: 3, padding: 15, alignItems: 'center' },
+    promoWrap: { width: '47%' },
+    promoBox: { width: '100%', backgroundColor: c.card, borderRadius: 20, elevation: 3, padding: 15, alignItems: 'center' },
     promoImgPlaceholder: { width: '100%', height: 80, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
     promoText: { fontWeight: 'bold', fontSize: 13, textAlign: 'center', color: c.text },
     promoImage: {

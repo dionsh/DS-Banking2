@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   Alert,
   ScrollView,
@@ -18,6 +17,7 @@ import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { confirmOverBudget } from "../utils/budgetGuard";
+import { MotionView, PressableScale, SuccessOverlay } from "../components/motion";
 
 export default function Transfer() {
   const navigation = useNavigation();
@@ -43,6 +43,10 @@ export default function Transfer() {
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [pin, setPin] = useState("");
   const [verifying, setVerifying] = useState(false);
+
+  // Animated success confirmation (shown instead of a plain alert).
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successSummary, setSuccessSummary] = useState("");
 
   useEffect(() => {
     const fetchSender = async () => {
@@ -151,13 +155,12 @@ export default function Transfer() {
         // e ban update local state
         setSender(updatedUser);
 
-        // i tregon userit a u ba transfer me sukses a qysh
-        Alert.alert(t("common.success"), data.message, [
-          {
-            text: "OK",
-            onPress: () => navigation.goBack(),
-          },
-        ]);
+        // Animated confirmation (check pop + ring) instead of a plain alert;
+        // navigates back automatically when it finishes.
+        setSuccessSummary(
+          `${parseFloat(amount).toFixed(2)} EUR → ${receiverName.trim()} ${receiverSurname.trim()}`
+        );
+        setSuccessOpen(true);
       } else {
         Alert.alert(t("common.error"), data.message);
       }
@@ -172,9 +175,9 @@ export default function Transfer() {
   <SafeAreaView style={styles.container}>
 
     <View style={styles.header}>
-      <TouchableOpacity onPress={() => navigation.openDrawer()}>
+      <PressableScale scaleTo={0.85} hitSlop={8} onPress={() => navigation.openDrawer()}>
         <MaterialCommunityIcons name="menu" size={28} color={colors.accent} />
-      </TouchableOpacity>
+      </PressableScale>
 
       <Text style={styles.headerTitle}>{t("transfer.title")}</Text>
 
@@ -185,7 +188,7 @@ export default function Transfer() {
       contentContainerStyle={styles.formContainer}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.card}>
+      <MotionView from="down" style={styles.card}>
 
       <Text style={styles.label}>{t("transfer.amount")}</Text>
 <TextInput
@@ -240,10 +243,10 @@ export default function Transfer() {
           multiline
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleTransfer}>
+        <PressableScale style={styles.button} scaleTo={0.95} onPress={handleTransfer}>
           <Text style={styles.buttonText}>{t("transfer.sendTransfer")}</Text>
-        </TouchableOpacity>
-      </View>
+        </PressableScale>
+      </MotionView>
     </ScrollView>
 
     {/* PIN confirmation before sending money */}
@@ -254,7 +257,8 @@ export default function Transfer() {
       onRequestClose={() => !verifying && setPinModalVisible(false)}
     >
       <View style={styles.pinBackdrop}>
-        <View style={styles.pinCard}>
+        {/* Springs up from its trigger for spatial context */}
+        <MotionView from="zoom" spring style={styles.pinCard}>
           <View style={styles.pinIconWrap}>
             <MaterialCommunityIcons name="lock-outline" size={26} color={colors.primary} />
           </View>
@@ -276,15 +280,17 @@ export default function Transfer() {
           />
 
           <View style={styles.pinBtnRow}>
-            <TouchableOpacity
+            <PressableScale
               style={styles.pinCancel}
+              scaleTo={0.95}
               onPress={() => setPinModalVisible(false)}
               disabled={verifying}
             >
               <Text style={styles.pinCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </PressableScale>
+            <PressableScale
               style={styles.pinConfirm}
+              scaleTo={0.95}
               onPress={confirmPin}
               disabled={verifying}
             >
@@ -293,11 +299,26 @@ export default function Transfer() {
               ) : (
                 <Text style={styles.pinConfirmText}>Confirm & Send</Text>
               )}
-            </TouchableOpacity>
+            </PressableScale>
           </View>
-        </View>
+        </MotionView>
       </View>
     </Modal>
+
+    {/* Animated transfer confirmation — auto-dismisses, then returns home */}
+    <SuccessOverlay
+      visible={successOpen}
+      title={t("common.success")}
+      subtitle={successSummary}
+      color={colors.success}
+      cardColor={colors.card}
+      textColor={colors.text}
+      subTextColor={colors.textSecondary}
+      onDone={() => {
+        setSuccessOpen(false);
+        navigation.goBack();
+      }}
+    />
   </SafeAreaView>
 );
 }

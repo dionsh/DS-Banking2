@@ -12,7 +12,7 @@ import {
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+import { useNavigation, useRoute, useFocusEffect, DrawerActions } from "@react-navigation/native";
 import { MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "../config";
@@ -99,35 +99,52 @@ export default function Card() {
     })
   ).current;
 
-  const frontRotateY = rotateAnim.interpolate({
-    inputRange: [0, 360],
-    outputRange: ["0deg", "360deg"],
-  });
-  const backRotateY = rotateAnim.interpolate({
-    inputRange: [0, 360],
-    outputRange: ["180deg", "540deg"],
-  });
-  const tiltX = tiltAnim.interpolate({
-    inputRange: [-10, 10],
-    outputRange: ["-10deg", "10deg"],
-  });
+  // The animated *values* (rotateAnim/tiltAnim/scaleAnim) are stable refs, so
+  // the derived interpolation nodes only need to be built once. Previously they
+  // were recreated on every render — each render spawned a fresh Animated.modulo
+  // chain attached to rotateAnim, churning the JS thread on re-renders (focus
+  // refetch, freeze toggle, drawer slide) and occasionally swallowing the very
+  // next touch. That is what made the header menu button need a second press.
+  // Memoizing them removes the churn so the first tap always registers.
+  const {
+    frontRotateY,
+    backRotateY,
+    tiltX,
+    frontOpacity,
+    backOpacity,
+    shineOpacity,
+  } = useMemo(() => {
+    const frontRotateY = rotateAnim.interpolate({
+      inputRange: [0, 360],
+      outputRange: ["0deg", "360deg"],
+    });
+    const backRotateY = rotateAnim.interpolate({
+      inputRange: [0, 360],
+      outputRange: ["180deg", "540deg"],
+    });
+    const tiltX = tiltAnim.interpolate({
+      inputRange: [-10, 10],
+      outputRange: ["-10deg", "10deg"],
+    });
 
-  // Normalized 0..360 angle, used to fully hide the face that points away
-  // (belt and braces on top of backfaceVisibility, which some Android
-  // versions handle poorly) and to sweep a light "shine" across the card.
-  const angle = Animated.modulo(rotateAnim, 360);
-  const frontOpacity = angle.interpolate({
-    inputRange: [0, 89.9, 90, 270, 270.1, 360],
-    outputRange: [1, 1, 0, 0, 1, 1],
-  });
-  const backOpacity = angle.interpolate({
-    inputRange: [0, 89.9, 90, 270, 270.1, 360],
-    outputRange: [0, 0, 1, 1, 0, 0],
-  });
-  const shineOpacity = angle.interpolate({
-    inputRange: [0, 90, 180, 270, 360],
-    outputRange: [0, 0.16, 0, 0.16, 0],
-  });
+    // Normalized 0..360 angle, used to fully hide the face that points away
+    // (belt and braces on top of backfaceVisibility, which some Android
+    // versions handle poorly) and to sweep a light "shine" across the card.
+    const angle = Animated.modulo(rotateAnim, 360);
+    const frontOpacity = angle.interpolate({
+      inputRange: [0, 89.9, 90, 270, 270.1, 360],
+      outputRange: [1, 1, 0, 0, 1, 1],
+    });
+    const backOpacity = angle.interpolate({
+      inputRange: [0, 89.9, 90, 270, 270.1, 360],
+      outputRange: [0, 0, 1, 1, 0, 0],
+    });
+    const shineOpacity = angle.interpolate({
+      inputRange: [0, 90, 180, 270, 360],
+      outputRange: [0, 0.16, 0, 0.16, 0],
+    });
+    return { frontRotateY, backRotateY, tiltX, frontOpacity, backOpacity, shineOpacity };
+  }, [rotateAnim, tiltAnim]);
 
   const faceTransform = (rotateY) => [
     { perspective: 1200 },
@@ -247,7 +264,15 @@ export default function Card() {
       <SafeAreaView edges={["top"]} style={{ backgroundColor: colors.primary }}>
 
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.openDrawer()}>
+          {/* Dispatch DrawerActions instead of navigation.openDrawer(): it is
+              routed to the nearest drawer regardless of how Card was reached
+              (Card exists in both the drawer and the root stack), and it can't
+              be a no-op the way the convenience method is when this screen's
+              own navigator has no openDrawer. hitSlop widens the tap target. */}
+          <TouchableOpacity
+            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
             <MaterialCommunityIcons name="menu" size={28} color="white" />
           </TouchableOpacity>
 

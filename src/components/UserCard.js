@@ -1,10 +1,12 @@
 import React, { useMemo, useState, useRef, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from "react-native";
+import { View, Text, StyleSheet, Animated } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
+import AnimatedNumber from "./AnimatedNumber";
+import { PressableScale } from "./motion";
 
 export default function UserCard({ fullName, cardNumber, balance, userId, navigation }){
   const { colors } = useTheme();
@@ -54,10 +56,14 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
         </Text>
 
         <View style={styles.balanceContainer}>
-          <Text style={styles.balance}>
-            {hidden ? "••••••••" : format(balance)}
-          </Text>
-          <TouchableOpacity
+          {hidden ? (
+            <Text style={styles.balance}>••••••••</Text>
+          ) : (
+            // Rolls up to the current balance (and replays when unhidden).
+            <AnimatedNumber value={balance} format={format} style={styles.balance} duration={800} />
+          )}
+          <PressableScale
+            scaleTo={0.8}
             onPress={() => setHidden((h) => !h)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
@@ -66,20 +72,20 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
               size={20}
               color={colors.accent}
             />
-          </TouchableOpacity>
+          </PressableScale>
         </View>
 
-        <TouchableOpacity
+        <PressableScale
           style={styles.ibanRow}
+          scaleTo={0.97}
           onPress={copyAccountNumber}
-          activeOpacity={0.6}
           hitSlop={{ top: 6, bottom: 6 }}
         >
           <Text style={styles.ibanText}>
             {formatCardNumber(cardNumber)}
           </Text>
           <MaterialCommunityIcons name="content-copy" size={15} color={colors.accent} />
-        </TouchableOpacity>
+        </PressableScale>
 
         {copied && (
           <Animated.View style={[styles.copiedPill, { opacity: copiedAnim }]}>
@@ -89,18 +95,19 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
         )}
 
         <View style={styles.buttonsRow}>
-        <TouchableOpacity
+        <PressableScale
   style={[styles.button, { backgroundColor: colors.primary }]}
+  scaleTo={0.94}
   onPress={() => navigation.navigate("TopUp", { user_id: userId })}
 >
             <MaterialCommunityIcons name="phone-plus" size={18} color="#FFF" />
             <Text style={[styles.buttonText, { color: '#FFF' }]}>{t("card.topup")}</Text>
-          </TouchableOpacity>
+          </PressableScale>
 
-          <TouchableOpacity style={[styles.button, { backgroundColor: colors.surfaceAlt }]}>
+          <PressableScale style={[styles.button, { backgroundColor: colors.surfaceAlt }]} scaleTo={0.94}>
             <MaterialCommunityIcons name="hands-pray" size={18} color={colors.accent} />
             <Text style={[styles.buttonText, { color: colors.accent }]}>KUIK</Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </View>
     </View>

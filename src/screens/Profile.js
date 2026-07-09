@@ -62,6 +62,7 @@ export default function Profile({ navigation }) {
         title={t("profile.contactTitle")}
         description={t("profile.contactDesc")}
         icon="call-outline"
+        onPress={() => navigation.navigate("ContactDetails")}
       />
 
       <Text style={styles.sectionTitle}>{t("profile.sectionOther")}</Text>
