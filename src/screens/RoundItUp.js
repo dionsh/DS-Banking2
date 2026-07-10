@@ -16,12 +16,14 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import { confirmOverBudget } from "../utils/budgetGuard";
 
 export default function RoundItUp() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { format, formatRaw, convert, toEur, code } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [user, setUser] = useState(null);
@@ -66,20 +68,26 @@ export default function RoundItUp() {
     }, [])
   );
 
+  // The purchase is typed in the DISPLAY currency, so the round-up happens in
+  // that currency (up to the next whole dollar/pound/...); both amounts are
+  // converted to EUR before hitting the backend.
   const purchaseNum = parseFloat(purchase) || 0;
   const rounded = purchaseNum > 0 ? Math.ceil(purchaseNum - 0.0000001) : 0;
   const saved = rounded > purchaseNum ? Math.round((rounded - purchaseNum) * 100) / 100 : 0;
+
+  const purchaseEur = Math.round(toEur(purchaseNum) * 100) / 100;
+  const savedEur = Math.round(toEur(saved) * 100) / 100;
 
   const handleConfirm = async () => {
     if (purchaseNum <= 0) {
       Alert.alert(t("common.error"), t("roundup.invalidAmount"));
       return;
     }
-    if (saved <= 0) {
+    if (saved <= 0 || savedEur <= 0) {
       Alert.alert(t("roundup.nothingTitle"), t("roundup.nothingMsg"));
       return;
     }
-    if (purchaseNum + saved > balance) {
+    if (purchaseEur + savedEur > balance) {
       Alert.alert(t("topup.insufficient"), t("roundup.insufficientMsg"));
       return;
     }
@@ -89,7 +97,7 @@ export default function RoundItUp() {
     const okBudget = await confirmOverBudget({
       userId: user.user_id,
       category: "Card Purchases",
-      amount: purchaseNum,
+      amount: purchaseEur,
     });
     if (!okBudget) return;
 
@@ -100,7 +108,8 @@ export default function RoundItUp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.user_id,
-          purchase_amount: purchaseNum,
+          purchase_amount: purchaseEur,
+          saved_amount: savedEur,
           label: label.trim(),
         }),
       });
@@ -116,9 +125,9 @@ export default function RoundItUp() {
         Alert.alert(
           t("roundup.savedTitle"),
           t("roundup.savedMsg", {
-            purchase: purchaseNum.toFixed(2),
-            rounded: Number(data.rounded).toFixed(2),
-            saved: Number(data.saved).toFixed(2),
+            purchase: formatRaw(purchaseNum),
+            rounded: formatRaw(rounded),
+            saved: formatRaw(saved),
           }),
           [
             { text: t("roundup.viewSavings"), onPress: () => navigation.navigate("Savings") },
@@ -162,7 +171,7 @@ export default function RoundItUp() {
           <MaterialCommunityIcons name="piggy-bank" size={30} color="#fff" />
           <View style={{ marginLeft: 14 }}>
             <Text style={styles.savingsBannerLabel}>{t("roundup.currentSavings")}</Text>
-            <Text style={styles.savingsBannerValue}>{Number(savings).toFixed(2)} EUR</Text>
+            <Text style={styles.savingsBannerValue}>{format(savings)}</Text>
           </View>
         </View>
 
@@ -195,7 +204,7 @@ export default function RoundItUp() {
           <TextInput
             style={styles.amountInput}
             keyboardType="numeric"
-            placeholder="1.75 EUR"
+            placeholder={`1.75 ${code}`}
             placeholderTextColor={colors.placeholder}
             value={purchase}
             onChangeText={setPurchase}
@@ -214,21 +223,21 @@ export default function RoundItUp() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryLine}>
             <Text style={styles.summaryLineLabel}>{t("roundup.sPurchase")}</Text>
-            <Text style={styles.summaryLineValue}>{purchaseNum.toFixed(2)} EUR</Text>
+            <Text style={styles.summaryLineValue}>{formatRaw(purchaseNum)}</Text>
           </View>
           <View style={styles.summaryLine}>
             <Text style={styles.summaryLineLabel}>{t("roundup.sRounded")}</Text>
-            <Text style={styles.summaryLineValue}>{rounded.toFixed(2)} EUR</Text>
+            <Text style={styles.summaryLineValue}>{formatRaw(rounded)}</Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryLine}>
             <Text style={styles.savedLabel}>{t("roundup.sSaved")}</Text>
-            <Text style={styles.savedValue}>+{saved.toFixed(2)} EUR</Text>
+            <Text style={styles.savedValue}>+{formatRaw(saved)}</Text>
           </View>
           <View style={styles.summaryLine}>
             <Text style={styles.summaryLineLabel}>{t("roundup.sNewBalance")}</Text>
             <Text style={styles.summaryLineValue}>
-              {(Number(savings) + saved).toFixed(2)} EUR
+              {formatRaw(convert(savings) + saved)}
             </Text>
           </View>
         </View>

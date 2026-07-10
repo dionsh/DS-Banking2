@@ -23,6 +23,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LineChart, BarChart, PieChart } from "react-native-chart-kit";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import AnimatedNumber from "../components/AnimatedNumber";
 import { MotionView, PressableScale, SkeletonBlock } from "../components/motion";
 import { makeChartConfig, hexToRgba, CATEGORY_COLORS } from "../utils/chartTheme";
@@ -30,14 +31,21 @@ import { makeChartConfig, hexToRgba, CATEGORY_COLORS } from "../utils/chartTheme
 const screenWidth = Dimensions.get("window").width;
 const CHART_WIDTH = screenWidth - 60; // card margins (20) + card padding (10)
 
-const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
-const eurShort = (n) => "€" + Math.round(Number(n) || 0);
-
 export default function Analytics() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { format, convert, symbol } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const chartConfig = useMemo(() => makeChartConfig(colors), [colors]);
+
+  // Server aggregates are EUR — every displayed number goes through the
+  // active display currency (charts included, so axes match the labels).
+  const eur = format;
+  const eurShort = (n) => {
+    const v = Math.round(convert(n));
+    return symbol.length > 1 ? `${symbol} ${v}` : `${symbol}${v}`;
+  };
+  const axisLabel = symbol.length > 1 ? "" : symbol;
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -103,7 +111,7 @@ export default function Analytics() {
 
   const pieData = categories.slice(0, 8).map((c, i) => ({
     name: c.name,
-    amount: c.amount,
+    amount: Math.round(convert(c.amount)),
     color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
     legendFontColor: colors.textSecondary,
     legendFontSize: 12,
@@ -113,12 +121,12 @@ export default function Analytics() {
     labels: months.map((m) => m.label),
     datasets: [
       {
-        data: months.map((m) => Math.round(m.income)),
+        data: months.map((m) => Math.round(convert(m.income))),
         color: (o = 1) => hexToRgba(colors.success, o),
         strokeWidth: 2,
       },
       {
-        data: months.map((m) => Math.round(m.expenses)),
+        data: months.map((m) => Math.round(convert(m.expenses))),
         color: (o = 1) => hexToRgba(colors.danger, o),
         strokeWidth: 2,
       },
@@ -128,14 +136,14 @@ export default function Analytics() {
 
   const weeklyData = {
     labels: weeks.map((w) => w.label.split(" ")[0]), // day of the week start
-    datasets: [{ data: weeks.map((w) => Math.round(w.expenses)) }],
+    datasets: [{ data: weeks.map((w) => Math.round(convert(w.expenses))) }],
   };
 
   const savingsData = {
     labels: savings.monthly.map((m) => m.label),
     datasets: [
       {
-        data: savings.monthly.map((m) => Math.round(m.balance)),
+        data: savings.monthly.map((m) => Math.round(convert(m.balance))),
         color: (o = 1) => hexToRgba("#26A69A", o),
         strokeWidth: 2,
       },
@@ -160,18 +168,19 @@ export default function Analytics() {
           <Text style={styles.summaryMonth}>{summary.month_label}</Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <AnimatedNumber value={summary.this_month_expenses} style={[styles.summaryValue, { color: colors.danger }]} />
+              <AnimatedNumber value={summary.this_month_expenses} format={format} style={[styles.summaryValue, { color: colors.danger }]} />
               <Text style={styles.summaryLabel}>SPENT</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <AnimatedNumber value={summary.this_month_income} style={[styles.summaryValue, { color: colors.success }]} />
+              <AnimatedNumber value={summary.this_month_income} format={format} style={[styles.summaryValue, { color: colors.success }]} />
               <Text style={styles.summaryLabel}>INCOME</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
               <AnimatedNumber
                 value={summary.net}
+                format={format}
                 style={[styles.summaryValue, { color: summary.net >= 0 ? colors.success : colors.danger }]}
               />
               <Text style={styles.summaryLabel}>NET</Text>
@@ -228,7 +237,7 @@ export default function Analytics() {
             chartConfig={chartConfig}
             bezier
             fromZero
-            yAxisLabel="€"
+            yAxisLabel={axisLabel}
             style={styles.chart}
           />
         </View>
@@ -247,7 +256,7 @@ export default function Analytics() {
               color: (o = 1) => hexToRgba(colors.accent, Math.max(o, 0.35)),
             }}
             fromZero
-            yAxisLabel="€"
+            yAxisLabel={axisLabel}
             yAxisSuffix=""
             showValuesOnTopOfBars={false}
             style={styles.chart}
@@ -262,7 +271,7 @@ export default function Analytics() {
         <View style={styles.card}>
           <View style={styles.inlineStat}>
             <MaterialCommunityIcons name="piggy-bank-outline" size={22} color={colors.accent} />
-            <AnimatedNumber value={savings.total} style={styles.inlineStatValue} />
+            <AnimatedNumber value={savings.total} format={format} style={styles.inlineStatValue} />
             <Text style={styles.inlineStatLabel}> saved in total</Text>
           </View>
           <LineChart
@@ -272,7 +281,7 @@ export default function Analytics() {
             chartConfig={chartConfig}
             bezier
             fromZero
-            yAxisLabel="€"
+            yAxisLabel={axisLabel}
             style={styles.chart}
           />
         </View>
@@ -284,7 +293,7 @@ export default function Analytics() {
         <View style={styles.twinRow}>
           <View style={[styles.card, styles.twinCard]}>
             <MaterialCommunityIcons name="sale" size={24} color="#FF7A00" />
-            <AnimatedNumber value={cashback.total_earned} style={styles.twinValue} />
+            <AnimatedNumber value={cashback.total_earned} format={format} style={styles.twinValue} />
             <Text style={styles.twinLabel}>Cashback earned</Text>
             <Text style={styles.twinSub}>{eur(cashback.balance)} unredeemed</Text>
           </View>
@@ -307,7 +316,7 @@ export default function Analytics() {
         <View style={styles.card}>
           <View style={styles.subsRow}>
             <View style={{ flex: 1 }}>
-              <AnimatedNumber value={subscriptions.monthly_cost} style={styles.subsValue} />
+              <AnimatedNumber value={subscriptions.monthly_cost} format={format} style={styles.subsValue} />
               <Text style={styles.twinLabel}>per month · {subscriptions.active_count} active</Text>
             </View>
             <View style={{ alignItems: "flex-end" }}>
@@ -332,7 +341,7 @@ export default function Analytics() {
               ))}
             </View>
           ) : (
-            <Text style={styles.emptyText}>No active subscriptions — €0 recurring cost. 🎉</Text>
+            <Text style={styles.emptyText}>No active subscriptions — {format(0)} recurring cost. 🎉</Text>
           )}
         </View>
         </MotionView>

@@ -21,8 +21,11 @@
 
 import { Alert } from "react-native";
 import { API_BASE } from "../config";
+import { formatIn, getActiveCurrencyCode } from "../currency/CurrencyContext";
 
-const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
+// Amounts here are EUR (the DB currency) — show them in the user's chosen
+// display currency, like every other monetary value in the app.
+const eur = (n) => formatIn(Number(n) || 0, getActiveCurrencyCode());
 
 // Maps a cashback partner's raw category to the budget/analytics category.
 // Mirrors analyticsPartnerCategoryLabel() in analytics_db.php so the pre-check

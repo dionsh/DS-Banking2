@@ -16,6 +16,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
 
 const GREEN = "#6AAA64";
 const YELLOW = "#C9B458";
@@ -74,6 +75,7 @@ export default function WordleRewards() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { format } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [user, setUser] = useState(null);
@@ -422,7 +424,7 @@ export default function WordleRewards() {
 
               <Text style={styles.infoText}>
                 🏆 Win to earn reward points — the fewer attempts you need, the more points you
-                get. 100 points = €1, redeemable to your balance on the Rewards screen.
+                get. 100 points = {format(1)}, redeemable to your balance on the Rewards screen.
               </Text>
             </ScrollView>
 

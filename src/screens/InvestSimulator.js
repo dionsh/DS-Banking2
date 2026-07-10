@@ -28,7 +28,10 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LineChart } from "react-native-chart-kit";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import AnimatedNumber from "../components/AnimatedNumber";
+import { SkeletonBlock } from "../components/motion";
+import { formatDateTime } from "../utils/datetime";
 import { makeChartConfig, hexToRgba } from "../utils/chartTheme";
 
 const screenWidth = Dimensions.get("window").width;
@@ -36,19 +39,24 @@ const CHART_WIDTH = screenWidth - 60;
 const RANGES = ["1D", "1W", "1M"];
 
 // Manual thousands formatting (Hermes' toLocaleString isn't always reliable).
-const money = (n) => {
-  const v = Number(n) || 0;
+const groupAbs = (v) => {
   const [int, dec] = Math.abs(v).toFixed(2).split(".");
-  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return (v < 0 ? "-" : "") + "€" + grouped + "." + dec;
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + dec;
 };
-const signed = (n) => (n >= 0 ? "+" : "−") + money(Math.abs(n));
 
 export default function InvestSimulator() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { code, symbol, convert, toEur } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const chartConfig = useMemo(() => makeChartConfig(colors), [colors]);
+
+  // All backend amounts are EUR — display them (grouped) in the chosen currency.
+  const money = (eur) => {
+    const v = convert(eur);
+    return (v < 0 ? "-" : "") + symbol + (symbol.length > 1 ? " " : "") + groupAbs(v);
+  };
+  const signed = (eur) => (eur >= 0 ? "+" : "−") + money(Math.abs(eur));
 
   const [userId, setUserId] = useState(null);
   const [data, setData] = useState(null);
@@ -101,13 +109,20 @@ export default function InvestSimulator() {
     const asset = data.assets.find((a) => a.key === selected);
     const holding = data.holdings.find((h) => h.asset === selected);
 
-    let amt = parseFloat((amount || "").replace(",", "."));
-    if (action === "sell" && (!amt || amt <= 0) && holding) {
-      // Empty amount + Sell = sell the whole position.
-      amt = Math.max(1, Math.ceil(holding.value));
+    // The input is typed in the DISPLAY currency; the backend trades in EUR.
+    const typed = parseFloat((amount || "").replace(",", "."));
+    let eurAmt;
+    if (action === "sell" && (!typed || typed <= 0) && holding) {
+      // Empty amount + Sell = sell the whole position (holding.value is EUR).
+      eurAmt = Math.max(1, Math.ceil(holding.value));
+    } else {
+      eurAmt = Math.round(toEur(typed) * 100) / 100;
     }
-    if (!amt || amt < 1) {
-      Alert.alert("Enter an amount", "Type how many € you want to " + action + " (minimum €1).");
+    if (!eurAmt || eurAmt < 1) {
+      Alert.alert(
+        "Enter an amount",
+        `Type how much you want to ${action} in ${code} (minimum ${money(1)}).`
+      );
       return;
     }
 
@@ -116,7 +131,7 @@ export default function InvestSimulator() {
       const res = await fetch(`${API_BASE}/invest_trade.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, action, asset: selected, amount: amt }),
+        body: JSON.stringify({ user_id: userId, action, asset: selected, amount: eurAmt }),
       });
       const json = await res.json();
       if (json.status === "success") {
@@ -134,7 +149,7 @@ export default function InvestSimulator() {
   const confirmReset = () => {
     Alert.alert(
       "Reset portfolio",
-      "Start over with €10,000 of virtual money? Your simulated holdings and history will be cleared.",
+      `Start over with ${money(10000)} of virtual money? Your simulated holdings and history will be cleared.`,
       [
         { text: "Keep playing", style: "cancel" },
         {
@@ -175,10 +190,19 @@ export default function InvestSimulator() {
   );
 
   if (loading || !data) {
+    // Skeleton portfolio — mirrors the real layout so content lands in place.
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         {Header}
-        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 60 }} />
+        <View style={{ padding: 20 }}>
+          <SkeletonBlock height={230} radius={20} />
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <SkeletonBlock key={i} width={82} height={36} radius={18} />
+            ))}
+          </View>
+          <SkeletonBlock height={290} radius={18} style={{ marginTop: 16 }} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -189,21 +213,24 @@ export default function InvestSimulator() {
   const up = asset.change_24h_pct >= 0;
   const plColor = portfolio.pl >= 0 ? colors.success : colors.danger;
 
+  // Chart series are EUR — convert so the axis matches the displayed currency.
   const assetChart = {
     labels: [],
     datasets: [
       {
-        data: asset.series,
+        data: asset.series.map(convert),
         color: (o = 1) => hexToRgba(asset.color, Math.max(o, 0.9)),
         strokeWidth: 2,
       },
     ],
   };
+  const portfolioSeries =
+    portfolio.series.length > 1 ? portfolio.series : [portfolio.value, portfolio.value];
   const portfolioChart = {
     labels: [],
     datasets: [
       {
-        data: portfolio.series.length > 1 ? portfolio.series : [portfolio.value, portfolio.value],
+        data: portfolioSeries.map(convert),
         color: (o = 1) => hexToRgba(colors.accent, Math.max(o, 0.9)),
         strokeWidth: 2,
       },
@@ -354,7 +381,7 @@ export default function InvestSimulator() {
             bezier
             withDots={false}
             withVerticalLines={false}
-            yAxisLabel="€"
+            yAxisLabel={symbol.length > 1 ? "" : symbol}
             style={styles.chart}
           />
 
@@ -376,14 +403,16 @@ export default function InvestSimulator() {
               style={styles.amountInput}
               value={amount}
               onChangeText={setAmount}
-              placeholder="Amount in €"
+              placeholder={`Amount in ${code}`}
               placeholderTextColor={colors.placeholder}
               keyboardType="numeric"
             />
             <View style={styles.quickAmounts}>
               {[100, 500, 1000].map((q) => (
                 <TouchableOpacity key={q} style={styles.quickAmountBtn} onPress={() => setAmount(String(q))}>
-                  <Text style={styles.quickAmountText}>€{q}</Text>
+                  <Text style={styles.quickAmountText}>
+                    {symbol.length > 1 ? `${symbol} ${q}` : `${symbol}${q}`}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -466,7 +495,7 @@ export default function InvestSimulator() {
                       {t.action === "buy" ? "Bought" : "Sold"} {t.name}
                     </Text>
                     <Text style={styles.tradeRowSub}>
-                      {t.units} @ {money(t.price)} · {t.created_at}
+                      {t.units} @ {money(t.price)} · {formatDateTime(t.created_at)}
                     </Text>
                   </View>
                   <Text

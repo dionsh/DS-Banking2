@@ -29,7 +29,9 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import AnimatedBar from "../components/AnimatedBar";
+import { formatDate, formatRelative } from "../utils/datetime";
 
 // Icon choices offered when creating a group (stored as the icon name string).
 const GROUP_ICONS = [
@@ -46,22 +48,19 @@ const GROUP_ICONS = [
 // Quick contribution amounts (EUR) shown in the group detail view.
 const QUICK_ADD = [10, 50, 100];
 
-const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 const GREEN = "#2E7D32";
 
-// Chat timestamp: time for today's messages, date + time for older ones.
-const fmtMsgTime = (s) => {
-  const d = new Date(String(s).replace(" ", "T"));
-  const hm = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  return d.toDateString() === new Date().toDateString()
-    ? hm
-    : d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) + " " + hm;
-};
+// Chat timestamp (Kosovo time): time for today's messages, date + time older.
+const fmtMsgTime = (s) => formatRelative(s);
 
 export default function SharedSavings() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { format, toEur, code } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // All stored amounts are EUR — display them in the chosen currency.
+  const eur = format;
 
   const [userId, setUserId] = useState(null);
   const [invitations, setInvitations] = useState([]);
@@ -152,6 +151,7 @@ export default function SharedSavings() {
       Alert.alert("Missing name", "Please enter a name for your group (e.g. Dubai Trip).");
       return;
     }
+    // The goal is typed in the display currency; the backend stores EUR.
     const amt = parseFloat(String(target).replace(",", "."));
     if (!amt || amt <= 0) {
       Alert.alert("Invalid goal", "Please enter a valid goal amount.");
@@ -166,7 +166,7 @@ export default function SharedSavings() {
           user_id: userId,
           name: name.trim(),
           icon,
-          target_amount: amt,
+          target_amount: Math.round(toEur(amt) * 100) / 100,
           invite_email: inviteEmail.trim(),
         }),
       });
@@ -209,9 +209,12 @@ export default function SharedSavings() {
   /* ---------- contribute ---------- */
 
   const addMoney = async (goal, amtArg) => {
-    const amt = amtArg || parseFloat(String(amount).replace(",", "."));
+    // Quick-add chips pass an EUR amount directly; the typed input is in the
+    // display currency and gets converted before hitting the backend.
+    const typed = parseFloat(String(amount).replace(",", "."));
+    const amt = amtArg || Math.round(toEur(typed) * 100) / 100;
     if (!amt || amt <= 0) {
-      Alert.alert("Enter an amount", "Type how many € you want to add.");
+      Alert.alert("Enter an amount", "Type how much you want to add.");
       return;
     }
     if (Number(accountBalance) < amt) {
@@ -498,7 +501,7 @@ export default function SharedSavings() {
             />
             <TextInput
               style={styles.input}
-              placeholder="Goal amount (€)"
+              placeholder={`Goal amount (${code})`}
               placeholderTextColor={colors.textMuted}
               value={target}
               onChangeText={setTarget}
@@ -695,7 +698,7 @@ export default function SharedSavings() {
                       <Text style={styles.availLineSmall}>From your balance ({eur(accountBalance)})</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder="Amount (€)"
+                        placeholder={`Amount (${code})`}
                         placeholderTextColor={colors.textMuted}
                         value={amount}
                         onChangeText={setAmount}
@@ -792,7 +795,7 @@ export default function SharedSavings() {
                             {cItem.user_id === userId ? "You" : cItem.name}
                           </Text>
                           <Text style={styles.historyDate}>
-                            {new Date(cItem.created_at.replace(" ", "T")).toLocaleDateString("de-DE")}
+                            {formatDate(cItem.created_at)}
                           </Text>
                         </View>
                         <Text style={styles.historyAmt}>+{eur(cItem.amount)}</Text>

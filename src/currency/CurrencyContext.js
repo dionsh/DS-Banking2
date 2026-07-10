@@ -22,6 +22,11 @@ export const CURRENCIES = [
 
 const STORAGE_KEY = "app_currency";
 
+// Fee % charged when the balance is converted between currencies — must match
+// CURRENCY_FEE_PCT in the backend's currency_db.php (the server re-computes
+// and is the source of truth; this constant only renders the quote).
+export const EXCHANGE_FEE_PCT = 0.5;
+
 export const currencyByCode = (code) =>
   CURRENCIES.find((c) => c.code === code) || CURRENCIES[0];
 
@@ -33,10 +38,28 @@ export const formatIn = (eur, code) => {
   return cur.symbol.length > 1 ? `${cur.symbol} ${num}` : `${cur.symbol}${num}`;
 };
 
+// The active currency code, readable OUTSIDE React (plain utils like
+// budgetGuard.js that can't call hooks). Kept in sync by CurrencyProvider.
+let activeCode = "EUR";
+export const getActiveCurrencyCode = () => activeCode;
+
+// Format an amount that is ALREADY in the active display currency (e.g. a
+// value the user just typed): "$25.00" — no conversion applied.
+export const formatRawIn = (amount, code) => {
+  const cur = currencyByCode(code);
+  const num = (Number(amount) || 0).toFixed(2);
+  return cur.symbol.length > 1 ? `${cur.symbol} ${num}` : `${cur.symbol}${num}`;
+};
+
 const CurrencyContext = createContext(null);
 
 export function CurrencyProvider({ children }) {
   const [code, setCode] = useState("EUR");
+
+  // Mirror into the module-level variable for non-hook consumers.
+  useEffect(() => {
+    activeCode = code;
+  }, [code]);
 
   useEffect(() => {
     (async () => {
@@ -51,6 +74,7 @@ export function CurrencyProvider({ children }) {
 
   const setCurrency = async (next) => {
     setCode(next);
+    activeCode = next;
     try {
       await AsyncStorage.setItem(STORAGE_KEY, next);
     } catch (e) {
@@ -68,8 +92,13 @@ export function CurrencyProvider({ children }) {
       setCurrency,
       // Convert an EUR (DB base) amount to the active display currency.
       convert: (eur) => (Number(eur) || 0) * cur.rate,
+      // Convert an amount typed in the active display currency back to EUR
+      // (what the backend/database always works in).
+      toEur: (amount) => (Number(amount) || 0) / cur.rate,
       // Format an EUR (DB base) amount in the active display currency.
       format: (eur) => formatIn(eur, cur.code),
+      // Format an amount already in the active display currency (typed input).
+      formatRaw: (amount) => formatRawIn(amount, cur.code),
     };
   }, [code]);
 

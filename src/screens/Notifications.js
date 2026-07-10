@@ -15,6 +15,7 @@ import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { AnimatedListItem, MotionView, PressableScale } from "../components/motion";
+import { formatDateTime } from "../utils/datetime";
 
 // Map a notification type to an icon + accent color.
 function typeVisual(type, colors) {
@@ -30,13 +31,9 @@ function typeVisual(type, colors) {
   }
 }
 
+// Shown in Kosovo local time, device-timezone-independent (see utils/datetime).
 function formatWhen(s) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  const pad = (n) => (n < 10 ? "0" + n : "" + n);
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
+  return formatDateTime(s);
 }
 
 export default function Notifications() {

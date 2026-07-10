@@ -26,12 +26,11 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import AnimatedBar from "../components/AnimatedBar";
 import { MotionView, PressableScale } from "../components/motion";
 
 const WARN_PCT = 80; // amber warning threshold
-
-const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 
 // "2026-07" -> shifted by delta months -> "2026-08"
 const shiftMonth = (key, delta) => {
@@ -47,7 +46,11 @@ const currentMonthKey = () => {
 export default function BudgetPlanner() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { format, convert, toEur, code } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Budgets are stored in EUR — display them in the chosen currency.
+  const eur = format;
 
   const [userId, setUserId] = useState(null);
   const [month, setMonth] = useState(currentMonthKey());
@@ -108,7 +111,8 @@ export default function BudgetPlanner() {
   const openEdit = (budget) => {
     setEditing(budget);
     setCategory({ key: budget.category, label: budget.label, icon: budget.icon, color: budget.color });
-    setLimit(String(budget.limit_amount));
+    // Prefill in the display currency (the input is typed in that currency).
+    setLimit(String(Math.round(convert(budget.limit_amount) * 100) / 100));
     setModalVisible(true);
   };
 
@@ -117,6 +121,7 @@ export default function BudgetPlanner() {
       Alert.alert("Pick a category", "Please choose a category for this budget.");
       return;
     }
+    // The limit is typed in the display currency; the backend stores EUR.
     const amt = parseFloat(String(limit).replace(",", "."));
     if (!amt || amt <= 0) {
       Alert.alert("Invalid limit", "Please enter a valid limit amount.");
@@ -131,7 +136,7 @@ export default function BudgetPlanner() {
           user_id: userId,
           month,
           category: category.key,
-          limit_amount: amt,
+          limit_amount: Math.round(toEur(amt) * 100) / 100,
         }),
       });
       const json = await res.json();
@@ -401,7 +406,7 @@ export default function BudgetPlanner() {
 
             <TextInput
               style={styles.input}
-              placeholder="Monthly limit (€)"
+              placeholder={`Monthly limit (${code})`}
               placeholderTextColor={colors.textMuted}
               value={limit}
               onChangeText={setLimit}

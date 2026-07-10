@@ -15,11 +15,14 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
+import { formatDate } from "../utils/datetime";
 
 export default function Rewards() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { format } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [user, setUser] = useState(null);
@@ -58,8 +61,9 @@ export default function Rewards() {
   );
 
   const maxRedeemable = Math.floor(points / pointsPerEur) * pointsPerEur;
-  const cashValue = (points / pointsPerEur).toFixed(2);
-  const redeemEuros = (redeemAmount / pointsPerEur).toFixed(2);
+  // Point values are EUR in the backend — shown in the display currency.
+  const cashValue = format(points / pointsPerEur);
+  const redeemEuros = format(redeemAmount / pointsPerEur);
 
   const handleRedeem = async () => {
     if (redeemAmount <= 0 || redeemAmount > points) {
@@ -88,7 +92,7 @@ export default function Rewards() {
                 const updatedUser = { ...user, balance: data.new_balance };
                 await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
                 setUser(updatedUser);
-                Alert.alert(t("rewards.redeemedTitle"), t("rewards.redeemedMsg", { amount: Number(data.redeemed).toFixed(2) }));
+                Alert.alert(t("rewards.redeemedTitle"), t("rewards.redeemedMsg", { amount: format(data.redeemed) }));
                 load();
               } else {
                 Alert.alert(t("common.error"), data.message || t("rewards.couldNotRedeem"));
@@ -123,7 +127,7 @@ export default function Rewards() {
         <View style={{ flex: 1 }}>
           <Text style={styles.rowTitle}>{item.description}</Text>
           <Text style={styles.rowSub}>
-            {new Date(item.created_at).toLocaleDateString("de-DE")}
+            {formatDate(item.created_at)}
           </Text>
         </View>
         <Text style={[styles.rowAmount, { color: item.points >= 0 ? colors.success : colors.dangerText }]}>
@@ -178,7 +182,7 @@ export default function Rewards() {
               <Text style={styles.balanceLabel}>{t("rewards.points")}</Text>
               <Text style={styles.balanceValue}>{points}</Text>
               <Text style={styles.cashHint}>
-                {t("rewards.worth", { cash: cashValue, ppe: pointsPerEur })}
+                {t("rewards.worth", { cash: cashValue, ppe: pointsPerEur, unit: format(1) })}
               </Text>
             </View>
 

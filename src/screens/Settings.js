@@ -13,8 +13,13 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
-import { useCurrency, formatIn, currencyByCode } from "../currency/CurrencyContext";
-import { MotionView, PressableScale } from "../components/motion";
+import {
+  useCurrency,
+  formatRawIn,
+  currencyByCode,
+  EXCHANGE_FEE_PCT,
+} from "../currency/CurrencyContext";
+import { MotionView, PressableScale, SuccessOverlay } from "../components/motion";
 
 export default function Settings() {
   const navigation = useNavigation();
@@ -25,25 +30,31 @@ export default function Settings() {
 
   const [notifications, setNotifications] = useState(true);
 
-  // Currency converter state. The balance is always stored in EUR in the DB; the
-  // converter only changes which currency the balance is DISPLAYED in.
+  // Currency converter state. The balance is always stored in EUR in the DB;
+  // converting switches the DISPLAY currency and charges a real 0.5% exchange
+  // fee via the backend (convert_currency.php), which records the conversion.
+  const [userId, setUserId] = useState(null);
   const [balanceEur, setBalanceEur] = useState(null);
   const [fromCode, setFromCode] = useState(activeCurrency);
   const [toCode, setToCode] = useState(activeCurrency === "EUR" ? "USD" : "EUR");
+  const [converting, setConverting] = useState(false);
+  const [successInfo, setSuccessInfo] = useState(null); // {received, fee} after a conversion
+  const [history, setHistory] = useState([]);
 
   // Keep the "convert from" selection in sync with the currency currently in use.
   useEffect(() => {
     setFromCode(activeCurrency);
   }, [activeCurrency]);
 
-  // Load the user's notification preference + current (EUR) balance for the
-  // converter preview.
+  // Load the user's notification preference, the current (EUR) balance for the
+  // live quote, and the recent conversion history.
   useFocusEffect(
     useCallback(() => {
       (async () => {
         try {
           const stored = JSON.parse(await AsyncStorage.getItem("user"));
           if (!stored) return;
+          setUserId(stored.user_id);
 
           const res = await fetch(`${API_BASE}/get_notifications.php?user_id=${stored.user_id}`);
           const data = await res.json();
@@ -56,6 +67,12 @@ export default function Settings() {
           if (cardData.status === "success") {
             setBalanceEur(Number(cardData.card.balance) || 0);
           }
+
+          const convRes = await fetch(`${API_BASE}/get_conversions.php?user_id=${stored.user_id}`);
+          const convData = await convRes.json();
+          if (convData.status === "success") {
+            setHistory(convData.conversions || []);
+          }
         } catch (err) {
           console.log("Settings load error:", err);
         }
@@ -63,26 +80,100 @@ export default function Settings() {
     }, [])
   );
 
-  // Confirm, then switch the display currency (display-only — transactions and the
-  // stored EUR balance are never modified).
+  // Live quote for the current from -> to pair. Mirrors the backend math
+  // (convert_currency.php is the source of truth when executing).
+  const round2 = (n) => Math.round(n * 100) / 100;
+  const quote = useMemo(() => {
+    if (balanceEur == null || fromCode === toCode) return null;
+    const from = currencyByCode(fromCode);
+    const to = currencyByCode(toCode);
+    const rate = to.rate / from.rate;
+    const feeEur = round2(balanceEur * (EXCHANGE_FEE_PCT / 100));
+    const received = round2((balanceEur - feeEur) * to.rate);
+    return {
+      rate,
+      amountFrom: round2(balanceEur * from.rate),
+      feeFrom: round2(feeEur * from.rate),
+      received,
+    };
+  }, [balanceEur, fromCode, toCode]);
+
+  // Confirm, then execute the conversion on the backend: it charges the 0.5%
+  // exchange fee to the real (EUR) balance, records the conversion and returns
+  // the exact amount received — then the app switches its display currency.
   const handleConvert = () => {
     if (fromCode === toCode) {
       Alert.alert("Currency Converter", "Please choose two different currencies.");
       return;
     }
+    if (!userId || balanceEur == null) {
+      Alert.alert("Currency Converter", "Your balance is still loading — try again in a moment.");
+      return;
+    }
+    if (!quote || balanceEur <= 0) {
+      Alert.alert("Currency Converter", "You have no balance to convert.");
+      return;
+    }
     Alert.alert(
       "Convert Balance",
-      "Are you sure you want to convert your balance?",
+      `Convert ${formatRawIn(quote.amountFrom, fromCode)} to ${currencyByCode(toCode).label}?\n\n` +
+        `Rate: 1 ${fromCode} = ${quote.rate.toFixed(4)} ${toCode}\n` +
+        `Fee (${EXCHANGE_FEE_PCT}%): ${formatRawIn(quote.feeFrom, fromCode)}\n` +
+        `You will receive: ${formatRawIn(quote.received, toCode)}`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Yes",
+          text: "Convert",
           onPress: async () => {
-            await setCurrency(toCode);
-            const toLabel = currencyByCode(toCode).label;
-            const newBalance =
-              balanceEur != null ? `\n\nNew balance: ${formatIn(balanceEur, toCode)}` : "";
-            Alert.alert("Done", `Your balance is now displayed in ${toLabel}.${newBalance}`);
+            setConverting(true);
+            try {
+              const res = await fetch(`${API_BASE}/convert_currency.php`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ user_id: userId, from_code: fromCode, to_code: toCode }),
+              });
+              const data = await res.json();
+              if (data.status !== "success") {
+                Alert.alert("Couldn't convert", data.message || "Please try again.");
+                return;
+              }
+              await setCurrency(data.to_code);
+              setBalanceEur(Number(data.new_balance) || 0);
+              setHistory((prev) => [
+                {
+                  from_code: data.from_code,
+                  to_code: data.to_code,
+                  rate: data.rate,
+                  fee_percent: data.fee_percent,
+                  amount_from: data.amount_from,
+                  fee_from: data.fee_from,
+                  amount_received: data.amount_received,
+                  created_at: new Date().toISOString(),
+                },
+                ...prev,
+              ]);
+              // Keep the cached user in sync so other screens show the fresh balance.
+              try {
+                const stored = JSON.parse(await AsyncStorage.getItem("user"));
+                if (stored) {
+                  await AsyncStorage.setItem(
+                    "user",
+                    JSON.stringify({ ...stored, balance: Number(data.new_balance) || 0 })
+                  );
+                }
+              } catch (e) {
+                // ignore
+              }
+              setSuccessInfo({
+                received: formatRawIn(data.amount_received, data.to_code),
+                fee: formatRawIn(data.fee_from, data.from_code),
+                toLabel: currencyByCode(data.to_code).label,
+              });
+            } catch (e) {
+              Alert.alert("Connection error", "Please try again.");
+            } finally {
+              setConverting(false);
+            }
           },
         },
       ]
@@ -236,21 +327,79 @@ export default function Settings() {
           })}
         </View>
 
-        {balanceEur != null && (
+        {balanceEur != null && fromCode !== toCode && quote && (
           <View style={styles.curPreview}>
-            <Text style={styles.curPreviewLabel}>Balance preview</Text>
-            <View style={styles.curPreviewRow}>
-              <Text style={styles.curPreviewFrom}>{formatIn(balanceEur, fromCode)}</Text>
-              <MaterialCommunityIcons name="arrow-right" size={18} color={colors.textMuted} />
-              <Text style={styles.curPreviewTo}>{formatIn(balanceEur, toCode)}</Text>
+            <Text style={styles.curPreviewLabel}>Conversion quote</Text>
+
+            <View style={styles.quoteRow}>
+              <Text style={styles.quoteLabel}>You convert</Text>
+              <Text style={styles.quoteValue}>{formatRawIn(quote.amountFrom, fromCode)}</Text>
+            </View>
+            <View style={styles.quoteRow}>
+              <Text style={styles.quoteLabel}>Exchange rate</Text>
+              <Text style={styles.quoteValue}>
+                1 {fromCode} = {quote.rate.toFixed(4)} {toCode}
+              </Text>
+            </View>
+            <View style={styles.quoteRow}>
+              <Text style={styles.quoteLabel}>Exchange fee ({EXCHANGE_FEE_PCT}%)</Text>
+              <Text style={[styles.quoteValue, { color: colors.danger }]}>
+                −{formatRawIn(quote.feeFrom, fromCode)}
+              </Text>
+            </View>
+
+            <View style={styles.quoteDivider} />
+
+            <View style={styles.quoteRow}>
+              <Text style={styles.quoteReceiveLabel}>You receive</Text>
+              <Text style={styles.curPreviewTo}>{formatRawIn(quote.received, toCode)}</Text>
             </View>
           </View>
         )}
 
-        <PressableScale style={styles.convertBtn} scaleTo={0.95} onPress={handleConvert}>
+        {fromCode === toCode && (
+          <Text style={styles.sameCurrencyHint}>
+            Choose two different currencies to see a conversion quote.
+          </Text>
+        )}
+
+        <PressableScale
+          style={[styles.convertBtn, (converting || fromCode === toCode) && { opacity: 0.6 }]}
+          scaleTo={0.95}
+          onPress={handleConvert}
+          disabled={converting || fromCode === toCode}
+        >
           <MaterialCommunityIcons name="swap-horizontal" size={20} color="#fff" />
-          <Text style={styles.convertBtnText}>Convert Balance</Text>
+          <Text style={styles.convertBtnText}>
+            {converting ? "Converting..." : "Convert Balance"}
+          </Text>
         </PressableScale>
+
+        {history.length > 0 && (
+          <View style={styles.convHistory}>
+            <Text style={styles.curHint}>Recent conversions</Text>
+            {history.slice(0, 3).map((h, i) => (
+              <View key={i} style={styles.convRow}>
+                <View style={styles.convIconWrap}>
+                  <MaterialCommunityIcons
+                    name="swap-horizontal-circle"
+                    size={22}
+                    color={colors.accent}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.convTitle}>
+                    {h.from_code} → {h.to_code}
+                  </Text>
+                  <Text style={styles.convSub}>
+                    Rate {Number(h.rate).toFixed(4)} · fee {formatRawIn(h.fee_from, h.from_code)}
+                  </Text>
+                </View>
+                <Text style={styles.convAmount}>{formatRawIn(h.amount_received, h.to_code)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
         </MotionView>
 
         {/* Notifications */}
@@ -279,6 +428,20 @@ export default function Settings() {
         </View>
         </MotionView>
       </ScrollView>
+
+      <SuccessOverlay
+        visible={!!successInfo}
+        title="Conversion complete"
+        subtitle={
+          successInfo
+            ? `You received ${successInfo.received}. Exchange fee: ${successInfo.fee}. Your balance is now shown in ${successInfo.toLabel}.`
+            : ""
+        }
+        cardColor={colors.card}
+        textColor={colors.text}
+        subTextColor={colors.textSecondary}
+        onDone={() => setSuccessInfo(null)}
+      />
     </View>
   );
 }
@@ -397,13 +560,68 @@ const makeStyles = (c) =>
       alignItems: "center",
       justifyContent: "space-between",
     },
-    curPreviewFrom: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: c.textSecondary,
-    },
     curPreviewTo: {
       fontSize: 22,
+      fontWeight: "800",
+      color: c.accent,
+    },
+    quoteRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 8,
+    },
+    quoteLabel: {
+      fontSize: 13,
+      color: c.textSecondary,
+    },
+    quoteValue: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: c.text,
+    },
+    quoteDivider: {
+      height: 1,
+      backgroundColor: c.divider,
+      marginTop: 12,
+      marginBottom: 4,
+    },
+    quoteReceiveLabel: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: c.text,
+    },
+    sameCurrencyHint: {
+      fontSize: 12,
+      color: c.textMuted,
+      marginTop: 14,
+      textAlign: "center",
+    },
+    convHistory: {
+      marginTop: 22,
+    },
+    convRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: c.divider,
+    },
+    convIconWrap: {
+      marginRight: 10,
+    },
+    convTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: c.text,
+    },
+    convSub: {
+      fontSize: 11.5,
+      color: c.textMuted,
+      marginTop: 2,
+    },
+    convAmount: {
+      fontSize: 14,
       fontWeight: "800",
       color: c.accent,
     },

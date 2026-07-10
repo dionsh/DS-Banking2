@@ -19,11 +19,16 @@ import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
+import { CardArtwork, getDesignById, DESIGNS } from "../components/cardDesigns";
 
 // Standard bank card aspect ratio (85.6mm x 53.98mm).
 const SCREEN_W = Dimensions.get("window").width;
 const CARD_W = SCREEN_W - 40;
 const CARD_H = Math.round(CARD_W / 1.586);
+
+// Mini card size for the "Your card designs" slider.
+const SLIDE_W = 132;
+const SLIDE_H = Math.round(SLIDE_W / 1.586);
 
 export default function Card() {
   const navigation = useNavigation();
@@ -40,6 +45,11 @@ export default function Card() {
   const [loading, setLoading] = useState(true);
   const [frozen, setFrozen] = useState(false);
   const [toggling, setToggling] = useState(false);
+
+  // Purchased card designs + which one is shown on the card (the primary).
+  const [owned, setOwned] = useState([]);
+  const [primaryId, setPrimaryId] = useState("classic");
+  const [settingId, setSettingId] = useState(null); // design id being switched to
 
   /* ---------- interactive 3D rotation ---------- */
 
@@ -177,12 +187,12 @@ export default function Card() {
 
     setLoading(true);
     try {
-      const [cardRes, statusRes] = await Promise.all([
+      const [cardRes, statusRes, designsRes] = await Promise.all([
         fetch(`${API_BASE}/get_card.php?user_id=${user_id}`),
         fetch(`${API_BASE}/get_card_status.php?user_id=${user_id}`),
+        fetch(`${API_BASE}/get_card_designs.php?user_id=${user_id}`),
       ]);
       const data = await cardRes.json();
-      console.log("CARD RESPONSE:", data);
 
       if (data.status === "success") {
         setCardData(data.card);
@@ -197,6 +207,16 @@ export default function Card() {
         }
       } catch (e) {
         // ignore status errors — default stays unfrozen
+      }
+
+      try {
+        const designs = await designsRes.json();
+        if (designs.status === "success") {
+          setOwned(designs.owned || []);
+          setPrimaryId(designs.primary || "classic");
+        }
+      } catch (e) {
+        // ignore — the card simply stays on the classic design
       }
     } catch (err) {
       console.log("CARD FETCH ERROR:", err);
@@ -247,6 +267,30 @@ export default function Card() {
     );
   };
 
+  // Switch which owned design is shown on the card (persisted server-side).
+  const choosePrimary = async (id) => {
+    if (id === primaryId || settingId) return;
+    const prev = primaryId;
+    setSettingId(id);
+    setPrimaryId(id); // optimistic — the card re-skins immediately
+    try {
+      const res = await fetch(`${API_BASE}/set_primary_design.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id, design_id: id }),
+      });
+      const data = await res.json();
+      if (data.status !== "success") {
+        setPrimaryId(prev); // revert on failure
+        Alert.alert("Couldn't switch design", data.message || "Please try again.");
+      }
+    } catch (e) {
+      setPrimaryId(prev);
+      Alert.alert("Connection error", "Please try again.");
+    }
+    setSettingId(null);
+  };
+
   const maskCard = (num) => {
     if (!num) return "---- ---- ---- ----";
     return num.replace(/(\d{4})\d+(\d{4})/, "$1 **** **** $2");
@@ -258,6 +302,14 @@ export default function Card() {
       <Text style={styles.frozenText}>FROZEN</Text>
     </View>
   );
+
+  // The design currently shown on the card. Its `fg` tints the real card
+  // details so they stay legible over any background (light or dark).
+  const primaryDesign = getDesignById(primaryId);
+  const fg = primaryDesign.fg || "#FFFFFF";
+  const designBg = primaryDesign.bg || colors.primary;
+  // The designs the user can switch between: the free DS Classic + any bought.
+  const availableDesigns = DESIGNS.filter((d) => d.id === "classic" || owned.includes(d.id));
 
   return (
     <View style={styles.container}>
@@ -291,39 +343,56 @@ export default function Card() {
             <Animated.View
               style={[
                 styles.cardFace,
+                { backgroundColor: designBg },
                 frozen && styles.cardBoxFrozen,
                 { opacity: frontOpacity, transform: faceTransform(frontRotateY) },
               ]}
             >
-              <View style={styles.rowBetween}>
-                <View style={styles.chipRow}>
-                  <View style={styles.chip}>
-                    <View style={styles.chipLine} />
-                    <View style={[styles.chipLine, { top: 14 }]} />
-                    <View style={styles.chipLineV} />
-                  </View>
-                  <MaterialCommunityIcons
-                    name="contactless-payment"
-                    size={22}
-                    color="rgba(255,255,255,0.85)"
-                    style={{ marginLeft: 10 }}
-                  />
-                </View>
-                <Text style={styles.visa}>VISA</Text>
+              {/* Purchased design skin — identical artwork to Personalize Card */}
+              <View style={StyleSheet.absoluteFill}>
+                <CardArtwork design={primaryDesign} w={CARD_W} h={CARD_H} idKey="cardmain" />
               </View>
 
-              <Text style={styles.cardNumber}>{maskCard(cardData?.card_number)}</Text>
-
-              <View style={styles.rowBetween}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.label}>{t("card.holder")}</Text>
-                  <Text style={styles.value} numberOfLines={1}>
-                    {holder ? holder.toUpperCase() : "—"}
-                  </Text>
+              {/* Real card details on top, tinted to the design's foreground */}
+              <View style={styles.cardChrome}>
+                <View style={styles.rowBetween}>
+                  <View style={styles.chipRow}>
+                    <View style={styles.chip}>
+                      <View style={styles.chipLine} />
+                      <View style={[styles.chipLine, { top: 14 }]} />
+                      <View style={styles.chipLineV} />
+                    </View>
+                    <MaterialCommunityIcons
+                      name="contactless-payment"
+                      size={22}
+                      color={fg}
+                      style={{ marginLeft: 10, opacity: 0.9 }}
+                    />
+                  </View>
+                  <Text style={[styles.visa, { color: fg }]}>VISA</Text>
                 </View>
-                <View>
-                  <Text style={styles.label}>{t("card.expiry")}</Text>
-                  <Text style={styles.value}>{cardData?.expiry_date || "--/--"}</Text>
+
+                <Text style={[styles.cardNumber, { color: fg }]}>
+                  {maskCard(cardData?.card_number)}
+                </Text>
+
+                <View style={styles.rowBetween}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.label, { color: fg, opacity: 0.75 }]}>
+                      {t("card.holder")}
+                    </Text>
+                    <Text style={[styles.value, { color: fg }]} numberOfLines={1}>
+                      {holder ? holder.toUpperCase() : "—"}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={[styles.label, { color: fg, opacity: 0.75 }]}>
+                      {t("card.expiry")}
+                    </Text>
+                    <Text style={[styles.value, { color: fg }]}>
+                      {cardData?.expiry_date || "--/--"}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
@@ -369,6 +438,61 @@ export default function Card() {
           <View style={styles.hintRow}>
             <MaterialCommunityIcons name="rotate-3d-variant" size={15} color={colors.textMuted} />
             <Text style={styles.hintText}> {t("card.dragHint")}</Text>
+          </View>
+
+          {/* Your card designs — swipe and tap to set one as your card */}
+          <View style={styles.designsSection}>
+            <Text style={styles.designsTitle}>Your card designs</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.designsRow}
+            >
+              {availableDesigns.map((d) => {
+                const active = d.id === primaryId;
+                return (
+                  <TouchableOpacity
+                    key={d.id}
+                    style={styles.slideItem}
+                    activeOpacity={0.85}
+                    onPress={() => choosePrimary(d.id)}
+                    disabled={!!settingId}
+                  >
+                    <View
+                      style={[
+                        styles.slideCard,
+                        { backgroundColor: d.bg || colors.primary },
+                        active && styles.slideCardActive,
+                      ]}
+                    >
+                      <CardArtwork design={d} w={SLIDE_W} h={SLIDE_H} idKey={`slide-${d.id}`} />
+                      <Text style={[styles.slideVisa, { color: d.fg || "#fff" }]}>VISA</Text>
+                      {active && (
+                        <View style={styles.slideCheck}>
+                          <MaterialCommunityIcons name="check" size={13} color="#fff" />
+                        </View>
+                      )}
+                      {settingId === d.id && (
+                        <View style={styles.slideBusy}>
+                          <ActivityIndicator size="small" color="#fff" />
+                        </View>
+                      )}
+                    </View>
+                    <Text
+                      style={[styles.slideName, active && { color: colors.accent, fontWeight: "700" }]}
+                      numberOfLines={1}
+                    >
+                      {active ? "Primary" : d.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {availableDesigns.length <= 1 && (
+              <Text style={styles.designsHint}>
+                Buy more designs in Personalize Card to switch your card's look.
+              </Text>
+            )}
           </View>
 
           {/* Card status pill */}
@@ -477,14 +601,18 @@ const makeStyles = (c) =>
       ...StyleSheet.absoluteFillObject,
       backgroundColor: c.primary,
       borderRadius: 18,
-      padding: 22,
-      justifyContent: "space-between",
       backfaceVisibility: "hidden",
       shadowColor: "#000",
       shadowOpacity: 0.2,
       shadowRadius: 6,
       elevation: 4,
       overflow: "hidden",
+    },
+    // The real card details, laid over the design artwork on the front face.
+    cardChrome: {
+      ...StyleSheet.absoluteFillObject,
+      padding: 22,
+      justifyContent: "space-between",
     },
     cardFaceBack: {
       padding: 0,
@@ -610,6 +738,67 @@ const makeStyles = (c) =>
       marginBottom: 12,
     },
     hintText: { color: c.textMuted, fontSize: 12 },
+
+    /* --- "Your card designs" slider --- */
+    designsSection: { marginTop: 4, marginBottom: 10 },
+    designsTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: c.text,
+      marginLeft: 20,
+      marginBottom: 10,
+    },
+    designsRow: { paddingHorizontal: 20 },
+    slideItem: { width: SLIDE_W, marginRight: 12, alignItems: "center" },
+    slideCard: {
+      width: SLIDE_W,
+      height: SLIDE_H,
+      borderRadius: 12,
+      overflow: "hidden",
+      borderWidth: 2,
+      borderColor: "transparent",
+    },
+    slideCardActive: { borderColor: c.accent },
+    slideVisa: {
+      position: "absolute",
+      right: 8,
+      bottom: 6,
+      fontSize: 11,
+      fontWeight: "800",
+      fontStyle: "italic",
+    },
+    slideCheck: {
+      position: "absolute",
+      top: 6,
+      right: 6,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: c.accent,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    slideBusy: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.25)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    slideName: {
+      fontSize: 11,
+      color: c.textSecondary,
+      marginTop: 6,
+      textAlign: "center",
+      fontWeight: "600",
+      width: SLIDE_W,
+    },
+    designsHint: {
+      fontSize: 11.5,
+      color: c.textMuted,
+      marginTop: 10,
+      marginHorizontal: 20,
+      lineHeight: 16,
+    },
 
     statusRow: {
       flexDirection: "row",

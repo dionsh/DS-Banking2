@@ -19,6 +19,9 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
+import { SkeletonBlock } from "../components/motion";
+import { formatDate } from "../utils/datetime";
 
 // Icon choices offered when creating a goal (stored as the icon name string).
 const GOAL_ICONS = [
@@ -35,7 +38,6 @@ const GOAL_ICONS = [
 // Quick contribution amounts (EUR) shown on each active goal.
 const QUICK_ADD = [10, 50, 100];
 
-const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 const pctOf = (saved, target) => {
   const t = Number(target) || 0;
   if (t <= 0) return 0;
@@ -46,7 +48,11 @@ export default function MySavings() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { format, toEur, code } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // All stored amounts are EUR — display them in the chosen currency.
+  const eur = format;
 
   const [userId, setUserId] = useState(null);
   const [balance, setBalance] = useState(0); // round-up savings total
@@ -118,6 +124,7 @@ export default function MySavings() {
       Alert.alert("Missing name", "Please enter a name for your goal.");
       return;
     }
+    // The target is typed in the display currency; the backend stores EUR.
     const amt = parseFloat(String(target).replace(",", "."));
     if (!amt || amt <= 0) {
       Alert.alert("Invalid target", "Please enter a valid target amount.");
@@ -131,7 +138,7 @@ export default function MySavings() {
         body: JSON.stringify({
           user_id: userId,
           name: name.trim(),
-          target_amount: amt,
+          target_amount: Math.round(toEur(amt) * 100) / 100,
           description: description.trim(),
           icon,
         }),
@@ -337,13 +344,19 @@ export default function MySavings() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
+        // Skeleton banner + goals — mirrors the real layout.
+        <View style={{ padding: 20 }}>
+          <SkeletonBlock height={130} radius={18} />
+          <SkeletonBlock width={150} height={16} radius={6} style={{ marginTop: 22 }} />
+          <SkeletonBlock height={150} radius={18} style={{ marginTop: 14 }} />
+          <SkeletonBlock height={150} radius={18} style={{ marginTop: 14 }} />
+        </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           {/* Round-up savings total */}
           <View style={styles.balanceCard}>
             <Text style={styles.balanceLabel}>{t("mysavings.totalSaved")}</Text>
-            <Text style={styles.balanceValue}>{Number(balance).toFixed(2)} EUR</Text>
+            <Text style={styles.balanceValue}>{eur(balance)}</Text>
             <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate("Round It Up")}>
               <MaterialCommunityIcons name="plus-circle-outline" size={18} color="#fff" />
               <Text style={styles.addBtnText}>{t("mysavings.roundUpPurchase")}</Text>
@@ -383,11 +396,11 @@ export default function MySavings() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{item.label ? item.label : t("mysavings.roundUp")}</Text>
                     <Text style={styles.rowSub}>
-                      {t("mysavings.purchase", { amount: Number(item.purchase_amount).toFixed(2) })} ·{" "}
-                      {new Date(item.created_at).toLocaleDateString("de-DE")}
+                      {t("mysavings.purchase", { amount: eur(item.purchase_amount) })} ·{" "}
+                      {formatDate(item.created_at)}
                     </Text>
                   </View>
-                  <Text style={styles.rowAmount}>+{Number(item.saved_amount).toFixed(2)}</Text>
+                  <Text style={styles.rowAmount}>+{eur(item.saved_amount)}</Text>
                 </View>
               ))}
             </>
@@ -414,7 +427,7 @@ export default function MySavings() {
             />
             <TextInput
               style={styles.input}
-              placeholder="Target amount (€)"
+              placeholder={`Target amount (${code})`}
               placeholderTextColor={colors.textMuted}
               value={target}
               onChangeText={setTarget}

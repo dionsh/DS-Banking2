@@ -1,11 +1,18 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { DrawerActions, useFocusEffect } from "@react-navigation/native";
-import { View, StyleSheet, ScrollView, Text, Image } from "react-native";
+import { View, StyleSheet, Text, Image } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Defs, LinearGradient as SvgGradient, Stop, Rect, Circle } from "react-native-svg";
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import UserCard from "../components/UserCard";
 import ApplePayPrompt from "../components/ApplePayPrompt";
-import { PressableScale, MotionView, SkeletonBlock, Pulse } from "../components/motion";
+import { PressableScale, MotionView, SkeletonBlock, Pulse, FloatingView } from "../components/motion";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
@@ -19,6 +26,21 @@ export default function Home({ navigation }) {
   const [user, setUser] = useState(null);
   const [unread, setUnread] = useState(0);
   const [showApplePay, setShowApplePay] = useState(false);
+
+  // Depth/parallax: the balance card scrolls slightly slower than the rest of
+  // the dashboard and grows a touch on pull-down (transform-only, UI thread).
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+  const cardParallax = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(scrollY.value, [-120, 0, 240], [-24, 0, 48], Extrapolation.CLAMP),
+      },
+      { scale: interpolate(scrollY.value, [-120, 0], [1.04, 1], Extrapolation.CLAMP) },
+    ],
+  }));
 
   // Show the full-screen Apple Wallet prompt once after login if the user's card
   // is not in Apple Wallet yet. Runs once per Home mount (i.e. per login).
@@ -151,7 +173,12 @@ useFocusEffect(
     <View style={styles.container}>
       {Header}
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+      >
+       <Animated.View style={cardParallax}>
        <MotionView from="down" delay={0}>
        <UserCard
   fullName={`${user.name} ${user.surname}`}
@@ -161,6 +188,7 @@ useFocusEffect(
   navigation={navigation}
 />
        </MotionView>
+       </Animated.View>
 
         {/* DS Banking Wrapped — story-style recap, available any time */}
         <MotionView from="down" delay={90}>
@@ -183,9 +211,9 @@ useFocusEffect(
             <Circle cx="12%" cy="86%" r="26" fill="rgba(255,255,255,0.07)" />
           </Svg>
 
-          <View style={styles.wrappedIconWrap}>
+          <FloatingView distance={3} duration={2000} style={styles.wrappedIconWrap}>
             <MaterialCommunityIcons name="star-shooting" size={24} color="#FFD200" />
-          </View>
+          </FloatingView>
 
           <View style={styles.wrappedTextWrap}>
             <Text style={styles.wrappedTitle} numberOfLines={1}>
@@ -242,7 +270,7 @@ useFocusEffect(
   </MotionView>
 
 </View>
-      </ScrollView>
+      </Animated.ScrollView>
 
       <ApplePayPrompt
         visible={showApplePay}

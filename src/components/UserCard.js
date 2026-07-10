@@ -6,7 +6,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
 import AnimatedNumber from "./AnimatedNumber";
-import { PressableScale } from "./motion";
+import { PressableScale, TiltCard, BumpOnChange } from "./motion";
 
 export default function UserCard({ fullName, cardNumber, balance, userId, navigation }){
   const { colors } = useTheme();
@@ -50,7 +50,9 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
         {t("card.greeting", { name: fullName || "User" })}
       </Text>
 
-      <View style={styles.card}>
+      {/* 3D perspective tilt toward the finger — buttons inside still work
+          normally; touching the card surface itself gives the physical feel. */}
+      <TiltCard style={styles.card} maxTilt={5} scaleTo={0.99}>
         <Text style={styles.cardNumber}>
           {formatCardNumber(cardNumber)}
         </Text>
@@ -59,8 +61,11 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
           {hidden ? (
             <Text style={styles.balance}>••••••••</Text>
           ) : (
-            // Rolls up to the current balance (and replays when unhidden).
-            <AnimatedNumber value={balance} format={format} style={styles.balance} duration={800} />
+            // Rolls up to the current balance (and replays when unhidden); the
+            // whole number gives a subtle pop whenever the balance changes.
+            <BumpOnChange value={balance}>
+              <AnimatedNumber value={balance} format={format} style={styles.balance} duration={800} />
+            </BumpOnChange>
           )}
           <PressableScale
             scaleTo={0.8}
@@ -109,7 +114,7 @@ export default function UserCard({ fullName, cardNumber, balance, userId, naviga
             <Text style={[styles.buttonText, { color: colors.accent }]}>KUIK</Text>
           </PressableScale>
         </View>
-      </View>
+      </TiltCard>
     </View>
   );
 }

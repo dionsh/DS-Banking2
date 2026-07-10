@@ -16,12 +16,16 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
+import { SkeletonBlock } from "../components/motion";
+import { formatDate } from "../utils/datetime";
 import { confirmOverBudget, partnerBudgetCategory } from "../utils/budgetGuard";
 
 export default function PartnerCashback() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { format } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [user, setUser] = useState(null);
@@ -97,7 +101,7 @@ export default function PartnerCashback() {
 
     Alert.alert(
       partner.name,
-      t("cb.buyConfirm", { price: price.toFixed(2), cashback: cashback.toFixed(2) }),
+      t("cb.buyConfirm", { price: format(price), cashback: format(cashback) }),
       [
         { text: t("common.cancel"), style: "cancel" },
         {
@@ -121,7 +125,7 @@ export default function PartnerCashback() {
                 setUser(updatedUser);
                 Alert.alert(
                   t("cb.purchaseComplete"),
-                  `${data.message}\n\n🎟️  Ticket ID: ${data.ticket_code}\nKeep this ID — it's your proof of purchase and appears in your transactions.`
+                  `You earned ${format(data.cashback_earned)} cashback.\n\n🎟️  Ticket ID: ${data.ticket_code}\nKeep this ID — it's your proof of purchase and appears in your transactions.`
                 );
                 load();
               } else {
@@ -145,7 +149,7 @@ export default function PartnerCashback() {
     }
     Alert.alert(
       t("cb.redeemTitle"),
-      t("cb.redeemConfirm", { amount: cashbackBalance.toFixed(2) }),
+      t("cb.redeemConfirm", { amount: format(cashbackBalance) }),
       [
         { text: t("common.cancel"), style: "cancel" },
         {
@@ -220,16 +224,16 @@ export default function PartnerCashback() {
           <View style={styles.priceRow}>
             <View>
               <Text style={styles.priceLabel}>{t("cb.price")}</Text>
-              <Text style={styles.priceValue}>{price.toFixed(2)} EUR</Text>
+              <Text style={styles.priceValue}>{format(price)}</Text>
             </View>
             <View style={styles.cashbackPill}>
               <MaterialCommunityIcons name="cash-refund" size={16} color={colors.success} />
-              <Text style={styles.cashbackPillText}>{t("cb.youGet", { amount: cashback.toFixed(2) })}</Text>
+              <Text style={styles.cashbackPillText}>{t("cb.youGet", { amount: format(cashback) })}</Text>
             </View>
           </View>
 
           <Text style={styles.effectiveText}>
-            {t("cb.effective", { amount: effective.toFixed(2) })}
+            {t("cb.effective", { amount: format(effective) })}
           </Text>
 
           <TouchableOpacity
@@ -259,7 +263,13 @@ export default function PartnerCashback() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
+        // Skeleton wallet + offers — mirrors the real layout.
+        <View style={{ padding: 20 }}>
+          <SkeletonBlock height={170} radius={20} />
+          <SkeletonBlock width={160} height={16} radius={6} style={{ marginTop: 22 }} />
+          <SkeletonBlock height={230} radius={18} style={{ marginTop: 14 }} />
+          <SkeletonBlock height={230} radius={18} style={{ marginTop: 14 }} />
+        </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
           {/* Cashback wallet */}
@@ -268,13 +278,13 @@ export default function PartnerCashback() {
               <MaterialCommunityIcons name="wallet-giftcard" size={30} color="#fff" />
               <View style={{ marginLeft: 14, flex: 1 }}>
                 <Text style={styles.walletLabel}>{t("cb.wallet")}</Text>
-                <Text style={styles.walletValue}>{cashbackBalance.toFixed(2)} EUR</Text>
+                <Text style={styles.walletValue}>{format(cashbackBalance)}</Text>
               </View>
             </View>
 
             <View style={styles.walletStatsRow}>
-              <Text style={styles.walletStat}>{t("cb.totalEarned", { amount: totalEarned.toFixed(2) })}</Text>
-              <Text style={styles.walletStat}>{t("cb.balanceStat", { amount: Number(balance).toFixed(2) })}</Text>
+              <Text style={styles.walletStat}>{t("cb.totalEarned", { amount: format(totalEarned) })}</Text>
+              <Text style={styles.walletStat}>{t("cb.balanceStat", { amount: format(balance) })}</Text>
             </View>
 
             <TouchableOpacity
@@ -317,8 +327,8 @@ export default function PartnerCashback() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.historyName}>{p.partner_name}</Text>
                     <Text style={styles.historySub}>
-                      {Number(p.price).toFixed(2)} EUR ·{" "}
-                      {new Date(p.created_at).toLocaleDateString("de-DE")}
+                      {format(p.price)} ·{" "}
+                      {formatDate(p.created_at)}
                     </Text>
                     {p.ticket_code ? (
                       <View style={styles.ticketPill}>
@@ -331,7 +341,7 @@ export default function PartnerCashback() {
                       </View>
                     ) : null}
                   </View>
-                  <Text style={styles.historyCashback}>+{Number(p.cashback_amount).toFixed(2)}</Text>
+                  <Text style={styles.historyCashback}>+{format(p.cashback_amount)}</Text>
                 </View>
               ))}
             </View>

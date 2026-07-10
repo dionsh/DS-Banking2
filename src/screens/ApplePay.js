@@ -15,18 +15,16 @@ import { MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { formatDate as fmtKosovoDate } from "../utils/datetime";
 
 const maskCard = (num) => {
   if (!num) return "•••• •••• •••• ••••";
   return num.replace(/(\d{4})\d+(\d{4})/, "$1 •••• •••• $2");
 };
 
+// Kosovo local date (see utils/datetime — device-timezone-independent).
 function formatDate(s) {
-  if (!s) return "";
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return s;
-  const pad = (n) => (n < 10 ? "0" + n : "" + n);
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  return fmtKosovoDate(s);
 }
 
 export default function ApplePay() {

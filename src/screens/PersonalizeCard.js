@@ -1,401 +1,47 @@
-// "Personalize Card" — lets the user browse and pick a card design.
+// "Personalize Card" — browse, buy and preview card designs.
 //
-// This is purely a UI demonstration: NO money is ever deducted and there is no
-// backend. Selecting a design and pressing Continue just shows a confirmation that
-// the request was submitted for review.
-//
-// Designs come in two flavours:
-//   - "gradient": an SVG linear-gradient background with card chrome on top.
-//   - "image": built around a real picture (assets/images). Photos are shown
-//     full-bleed with a legibility scrim; logos/emblems are shown contained on a
-//     themed background. Some image cards are VERTICAL (portrait) when the artwork
-//     suits it better (e.g. the World Cup logo and the Hyjnesha painting).
+// The design catalog and all the artwork (hand-drawn scenes, gradients, image
+// cards) live in ../components/cardDesigns so this gallery and the Card screen
+// render the exact same visuals. Buying a paid design charges the balance
+// (buy_card_design.php); the purchased/primary design is then shown on the real
+// card in Card.js. DS Classic is free and is the standard card.
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
-  Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import Svg, { Defs, LinearGradient, Stop, Rect, Circle, Path, Polygon, Line, Ellipse } from "react-native-svg";
+import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { useCurrency } from "../currency/CurrencyContext";
+import { SuccessOverlay } from "../components/motion";
+import { confirmOverBudget } from "../utils/budgetGuard";
+import {
+  DESIGNS,
+  CardArtwork,
+  priceLabel,
+  priceEur,
+  CARD_W,
+  CARD_H,
+  V_CARD_W,
+  V_CARD_H,
+} from "../components/cardDesigns";
 
-const SCREEN_W = Dimensions.get("window").width;
-const CARD_W = SCREEN_W - 40;
-const CARD_H = Math.round(CARD_W / 1.586); // standard bank-card aspect ratio
-const V_CARD_W = Math.round((SCREEN_W - 40) * 0.62); // portrait cards
-const V_CARD_H = Math.round(V_CARD_W * 1.586);
-
-// Local artwork.
-const IMG_HYJNESHA = require("../../assets/images/hyjnesha_c.jpg");
-const IMG_WORLDCUP = require("../../assets/images/worldcup.webp");
-const IMG_FSK = require("../../assets/images/fsk.webp");
-const IMG_WHALE = require("../../assets/images/whale2.png");
-const IMG_DESERT = require("../../assets/images/desert_c.jpg");
-const IMG_SPACE = require("../../assets/images/space_c.jpg");
-
-// layout: "cover" = full-bleed photo + scrim · "right" = contained emblem on the
-// right half · "top" = contained logo in the upper area (for vertical cards).
-// A gradient design may instead set scene:"forest" to use a hand-drawn SVG scene.
-const DESIGNS = [
-  // DS Classic leads, then the marquee image cards in the requested order.
-  { id: "classic", name: "DS Classic", price: "Free", type: "gradient", orientation: "h", fg: "#FFFFFF",
-    stops: [["0", "#191970"], ["1", "#2A2A9C"]] },
-  {
-    id: "worldcup", name: "FIFA World Cup 26", price: "€9.99",
-    type: "image", orientation: "v", layout: "top", image: IMG_WORLDCUP,
-    bgStops: [["0", "#202020"], ["1", "#000000"]], fg: "#E8C66B", scrim: false,
-  },
-  {
-    id: "fsk", name: "FSK", price: "€7.99",
-    type: "image", orientation: "h", layout: "right", image: IMG_FSK,
-    bgStops: [["0", "#5C6B2E"], ["1", "#262E14"]], fg: "#E7CF7A", scrim: false,
-  },
-  {
-    id: "whale", name: "Blue Whale", price: "€4.99",
-    type: "image", orientation: "h", layout: "right", image: IMG_WHALE,
-    bgStops: [["0", "#A6F0FB"], ["1", "#57C6E8"]], fg: "#0B3A5B", scrim: false,
-  },
-  // ---------- The others ----------
-  {
-    id: "penguin", name: "Arctic Penguin", price: "€4.99",
-    type: "gradient", orientation: "h", scene: "penguin", minimalChrome: true,
-    fg: "#0B3A5B", bg: "#CFEFFB",
-  },
-  {
-    id: "desert", name: "Golden Dunes", price: "€7.99",
-    type: "image", orientation: "h", layout: "cover", image: IMG_DESERT,
-    bg: "#8A5A24", fg: "#FFFFFF", scrim: true,
-  },
-  // ---------- Hand-drawn pine scenes (same composition, different moods) ----------
-  {
-    id: "nature", name: "Evergreen", price: "€4.99",
-    type: "gradient", orientation: "h", scene: "forest", palette: "evergreen", fg: "#FFFFFF", bg: "#16352B",
-  },
-  {
-    id: "crimson", name: "Crimson Pines", price: "€4.99",
-    type: "gradient", orientation: "h", scene: "forest", palette: "crimson", fg: "#FFF0E6", bg: "#2E1012",
-  },
-  {
-    id: "midnight", name: "Midnight Pines", price: "€4.99",
-    type: "gradient", orientation: "h", scene: "forest", palette: "midnight", fg: "#EAEEFF", bg: "#0A0F26",
-  },
-  {
-    id: "frost", name: "Frostpine", price: "€4.99",
-    type: "gradient", orientation: "h", scene: "forest", palette: "frost", fg: "#EAFBFF", bg: "#0B333D",
-  },
-  {
-    id: "hoop", name: "Slam Dunk", price: "€7.99",
-    type: "gradient", orientation: "h", scene: "basketball", fg: "#FFFFFF", bg: "#15173A",
-  },
-  {
-    id: "space", name: "Space", price: "€7.99",
-    type: "image", orientation: "h", layout: "cover", image: IMG_SPACE,
-    bg: "#0B0F2A", fg: "#FFFFFF", scrim: true,
-  },
-  // ---------- Gradient designs ----------
-  { id: "luxury", name: "Luxury Black & Gold", price: "€9.99", type: "gradient", orientation: "h", fg: "#F4D58D",
-    stops: [["0", "#1C1C1C"], ["0.5", "#0D0D0D"], ["1", "#000000"]] },
-  { id: "minimal", name: "Minimalist", price: "€2.99", type: "gradient", orientation: "h", fg: "#1A1A1A",
-    stripes: true, stops: [["0", "#F5F6F8"], ["1", "#DCE0E6"]] },
-  { id: "gradient", name: "Modern Gradient", price: "€2.99", type: "gradient", orientation: "h", fg: "#FFFFFF",
-    stops: [["0", "#7F5AF0"], ["0.5", "#C13584"], ["1", "#F77737"]] },
-  {
-    id: "hyjnesha", name: "Hyjnesha në Fron", price: "€9.99",
-    type: "image", orientation: "v", layout: "cover", image: IMG_HYJNESHA,
-    bg: "#6E2A1E", fg: "#FFF1E0", scrim: true,
-  },
-];
-
-// Colour moods for the hand-drawn pine scene + each palette's signature extras.
-const FOREST_PALETTES = {
-  evergreen: { sky: ["#356152", "#214E3E", "#0C2E22"], moon: "#EAF3E8", hill: "#23513F", back: "#2A5743", front: "#0F3025", ground: "#0C2A1F" },
-  crimson:   { sky: ["#8A3A2A", "#5E2320", "#280C10"], moon: "#FFC489", hill: "#4E1E1C", back: "#5C2420", front: "#260C0E", ground: "#1E090B", sun: true, birds: true },
-  midnight:  { sky: ["#243266", "#162042", "#080E22"], moon: "#E8ECFF", hill: "#1A2548", back: "#1E2A50", front: "#0C1330", ground: "#070B1C", stars: true, aurora: true, shooting: true },
-  frost:     { sky: ["#2E8A9C", "#1C6273", "#0C3A46"], moon: "#F0FBFF", hill: "#247280", back: "#2E8492", front: "#11515E", ground: "#0B333D", snow: true, snowcaps: true },
-};
-
-// Deterministic particle-field positions (fractions of w/h).
-const STAR_POS = [
-  [0.12, 0.18], [0.22, 0.30], [0.34, 0.13], [0.45, 0.24], [0.5, 0.09],
-  [0.58, 0.17], [0.68, 0.31], [0.16, 0.41], [0.88, 0.21], [0.93, 0.37],
-];
-const SNOW_POS = [
-  [0.08, 0.16], [0.18, 0.34], [0.27, 0.10], [0.36, 0.46], [0.44, 0.22],
-  [0.52, 0.38], [0.6, 0.14], [0.68, 0.5], [0.74, 0.28], [0.82, 0.42],
-  [0.9, 0.18], [0.14, 0.56], [0.33, 0.62], [0.5, 0.58], [0.7, 0.66], [0.86, 0.6],
-];
-
-// A hand-drawn pine scene. The shared composition (sky gradient + misty hill + two
-// depth layers of pines) is recoloured by `palette`, and each palette adds its own
-// signature: crimson -> a low setting sun + a flock of birds; midnight -> aurora
-// ribbons + a shooting star over a starfield; frost -> snow-capped trees + snowfall.
-function ForestScene({ w, h, palette, id }) {
-  const p = palette || FOREST_PALETTES.evergreen;
-  const pine = (t) => `${t.x - t.tw / 2},${t.base} ${t.x},${t.base - t.th} ${t.x + t.tw / 2},${t.base}`;
-  const cap = (t) =>
-    `${t.x - t.tw * 0.16},${t.base - t.th * 0.74} ${t.x},${t.base - t.th} ${t.x + t.tw * 0.16},${t.base - t.th * 0.74}`;
-  const bird = (x, y, s) => `M ${x} ${y} Q ${x + s} ${y - s} ${x + 2 * s} ${y} Q ${x + 3 * s} ${y - s} ${x + 4 * s} ${y}`;
-
-  const backT = [];
-  const N = 7;
-  for (let i = 0; i <= N; i++) backT.push({ x: (w * i) / N, base: h * 0.82, tw: w * 0.12, th: h * 0.22 });
-  const frontT = [];
-  const M = 6;
-  for (let i = 0; i <= M; i++) frontT.push({ x: (w * i) / M + w * 0.04, base: h * 0.985, tw: w * 0.17, th: h * 0.34 });
-
-  const min = Math.min(w, h);
-  const gid = `forest-sky-${id}`;
-  return (
-    <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <LinearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={p.sky[0]} />
-          <Stop offset="0.5" stopColor={p.sky[1]} />
-          <Stop offset="1" stopColor={p.sky[2]} />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width={w} height={h} fill={`url(#${gid})`} />
-
-      {/* Aurora ribbons (midnight) */}
-      {p.aurora && (
-        <>
-          <Path d={`M 0 ${h * 0.17} Q ${w * 0.28} ${h * 0.07} ${w * 0.55} ${h * 0.17} T ${w} ${h * 0.14}`}
-            stroke="#5FE6B4" strokeWidth={16} strokeOpacity={0.18} fill="none" strokeLinecap="round" />
-          <Path d={`M 0 ${h * 0.27} Q ${w * 0.3} ${h * 0.17} ${w * 0.6} ${h * 0.26} T ${w} ${h * 0.23}`}
-            stroke="#86A8FF" strokeWidth={12} strokeOpacity={0.15} fill="none" strokeLinecap="round" />
-        </>
-      )}
-
-      {/* Starfield (midnight) */}
-      {p.stars &&
-        STAR_POS.map(([fx, fy], i) => (
-          <Circle key={`s${i}`} cx={w * fx} cy={h * fy} r={i % 3 === 0 ? 1.7 : 1.1} fill={p.moon} opacity={0.85} />
-        ))}
-
-      {/* Shooting star (midnight) */}
-      {p.shooting && (
-        <>
-          <Line x1={w * 0.15} y1={h * 0.12} x2={w * 0.29} y2={h * 0.2} stroke="#FFFFFF" strokeWidth={1.6} strokeOpacity={0.8} strokeLinecap="round" />
-          <Circle cx={w * 0.29} cy={h * 0.2} r={2} fill="#FFFFFF" opacity={0.95} />
-        </>
-      )}
-
-      {/* Setting sun + glow (crimson) or a moon (others) */}
-      {p.sun ? (
-        <>
-          <Circle cx={w * 0.3} cy={h * 0.44} r={min * 0.27} fill={p.moon} opacity={0.16} />
-          <Circle cx={w * 0.3} cy={h * 0.44} r={min * 0.15} fill={p.moon} opacity={0.95} />
-        </>
-      ) : (
-        <Circle cx={w * 0.78} cy={h * 0.26} r={min * 0.11} fill={p.moon} opacity={0.88} />
-      )}
-
-      {/* Flock of birds (crimson) */}
-      {p.birds &&
-        [[0.56, 0.2, 5], [0.63, 0.27, 6], [0.71, 0.18, 4], [0.67, 0.34, 5], [0.79, 0.29, 6]].map(([fx, fy, s], i) => (
-          <Path key={`bird${i}`} d={bird(w * fx, h * fy, s)} stroke="#3A0E0E" strokeWidth={1.6} fill="none" strokeLinecap="round" />
-        ))}
-
-      {/* misty hill */}
-      <Path
-        d={`M0 ${h * 0.72} Q ${w * 0.3} ${h * 0.62} ${w * 0.56} ${h * 0.72} T ${w} ${h * 0.7} L ${w} ${h} L 0 ${h} Z`}
-        fill={p.hill}
-        opacity={0.9}
-      />
-      {backT.map((t, i) => (
-        <Polygon key={`b${i}`} points={pine(t)} fill={p.back} />
-      ))}
-      <Rect x="0" y={h * 0.92} width={w} height={h * 0.08} fill={p.ground} />
-      {frontT.map((t, i) => (
-        <Polygon key={`f${i}`} points={pine(t)} fill={p.front} />
-      ))}
-
-      {/* Snow caps on the trees (frost) */}
-      {p.snowcaps && (
-        <>
-          {backT.map((t, i) => (
-            <Polygon key={`bc${i}`} points={cap(t)} fill="#FFFFFF" opacity={0.55} />
-          ))}
-          {frontT.map((t, i) => (
-            <Polygon key={`fc${i}`} points={cap(t)} fill="#FFFFFF" opacity={0.92} />
-          ))}
-        </>
-      )}
-
-      {/* Falling snow (frost) */}
-      {p.snow &&
-        SNOW_POS.map(([fx, fy], i) => (
-          <Circle key={`sn${i}`} cx={w * fx} cy={h * fy} r={i % 4 === 0 ? 2.4 : 1.5} fill="#FFFFFF" opacity={0.9} />
-        ))}
-    </Svg>
-  );
-}
-
-// A hand-drawn basketball hoop at dusk: backboard + orange rim + hanging net on a
-// pole (upper right) and a basketball in mid-air (lower left). Pure react-native-svg.
-function BasketballScene({ w, h, id }) {
-  const gid = `court-sky-${id}`;
-  const min = Math.min(w, h);
-
-  // Backboard + rim geometry (upper right)
-  const bbX = w * 0.6;
-  const bbY = h * 0.13;
-  const bbW = w * 0.26;
-  const bbH = h * 0.27;
-  const rimCx = bbX + bbW * 0.5;
-  const rimCy = bbY + bbH + h * 0.02;
-  const rimRx = w * 0.085;
-  const rimRy = h * 0.028;
-
-  // Net mesh: from the rim, converging to a narrower bottom.
-  const netTopY = rimCy + rimRy * 0.4;
-  const netBotY = rimCy + h * 0.17;
-  const cols = 6;
-  const halfTop = rimRx;
-  const halfBot = rimRx * 0.45;
-  const netV = [];
-  for (let i = 0; i <= cols; i++) {
-    const tx = rimCx - halfTop + (2 * halfTop * i) / cols;
-    const bx = rimCx - halfBot + (2 * halfBot * i) / cols;
-    netV.push([tx, netTopY, bx, netBotY]);
-  }
-  const netH = [0.4, 0.75].map((f) => {
-    const y = netTopY + (netBotY - netTopY) * f;
-    const half = halfTop + (halfBot - halfTop) * f;
-    return [rimCx - half, y, rimCx + half, y];
-  });
-
-  // Basketball (lower left)
-  const ballCx = w * 0.28;
-  const ballCy = h * 0.58;
-  const ballR = min * 0.12;
-
-  return (
-    <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <LinearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#3C4F86" />
-          <Stop offset="0.55" stopColor="#27305E" />
-          <Stop offset="1" stopColor="#141838" />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width={w} height={h} fill={`url(#${gid})`} />
-
-      {/* faint court line */}
-      <Path d={`M 0 ${h * 0.9} Q ${w * 0.5} ${h * 0.84} ${w} ${h * 0.9}`} stroke="#FFFFFF" strokeOpacity={0.12} strokeWidth={2} fill="none" />
-
-      {/* pole (behind the backboard) */}
-      <Rect x={bbX + bbW * 0.82} y={bbY + bbH * 0.4} width={w * 0.02} height={h * 0.55} rx={2} fill="#9AA0AE" />
-
-      {/* backboard + shooting square */}
-      <Rect x={bbX} y={bbY} width={bbW} height={bbH} rx={6} fill="#F4F6FA" stroke="#C7CDDA" strokeWidth={2} />
-      <Rect x={bbX + bbW * 0.3} y={bbY + bbH * 0.42} width={bbW * 0.4} height={bbH * 0.4} rx={3} fill="none" stroke="#E8743B" strokeWidth={2.5} />
-
-      {/* rim */}
-      <Ellipse cx={rimCx} cy={rimCy} rx={rimRx} ry={rimRy} fill="none" stroke="#F2752B" strokeWidth={4} />
-
-      {/* net */}
-      {netV.map(([x1, y1, x2, y2], i) => (
-        <Line key={`nv${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFFFFF" strokeOpacity={0.85} strokeWidth={1.2} />
-      ))}
-      {netH.map(([x1, y1, x2, y2], i) => (
-        <Line key={`nh${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFFFFF" strokeOpacity={0.7} strokeWidth={1.1} />
-      ))}
-
-      {/* basketball + seams */}
-      <Circle cx={ballCx} cy={ballCy} r={ballR} fill="#E97E22" />
-      <Line x1={ballCx - ballR} y1={ballCy} x2={ballCx + ballR} y2={ballCy} stroke="#3A1A06" strokeWidth={1.6} />
-      <Line x1={ballCx} y1={ballCy - ballR} x2={ballCx} y2={ballCy + ballR} stroke="#3A1A06" strokeWidth={1.6} />
-      <Path d={`M ${ballCx} ${ballCy - ballR} Q ${ballCx - ballR * 0.85} ${ballCy} ${ballCx} ${ballCy + ballR}`} stroke="#3A1A06" strokeWidth={1.4} fill="none" />
-      <Path d={`M ${ballCx} ${ballCy - ballR} Q ${ballCx + ballR * 0.85} ${ballCy} ${ballCx} ${ballCy + ballR}`} stroke="#3A1A06" strokeWidth={1.4} fill="none" />
-    </Svg>
-  );
-}
-
-// A hand-drawn cartoon penguin on an icy background (snow ground + a few flakes).
-// Built from ellipses/paths so it always renders (no image pipeline involved).
-function PenguinScene({ w, h, id }) {
-  const gid = `ice-sky-${id}`;
-  const cx = w * 0.5;
-  const Y = (f) => h * f; // vertical helper (fraction of height)
-  const U = h; // size unit
-
-  return (
-    <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <LinearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#D8F1FB" />
-          <Stop offset="0.55" stopColor="#9DD8EF" />
-          <Stop offset="1" stopColor="#63B8DE" />
-        </LinearGradient>
-      </Defs>
-      <Rect x="0" y="0" width={w} height={h} fill={`url(#${gid})`} />
-
-      {/* snow ground */}
-      <Path d={`M 0 ${Y(0.78)} Q ${w * 0.5} ${Y(0.70)} ${w} ${Y(0.78)} L ${w} ${h} L 0 ${h} Z`} fill="#FFFFFF" opacity={0.92} />
-
-      {/* snowflakes */}
-      {[[0.13, 0.20], [0.22, 0.42], [0.79, 0.24], [0.88, 0.46], [0.32, 0.14], [0.70, 0.56]].map(([fx, fy], i) => (
-        <Circle key={`sf${i}`} cx={w * fx} cy={h * fy} r={i % 2 ? 2 : 1.4} fill="#FFFFFF" opacity={0.85} />
-      ))}
-
-      {/* feet (drawn first so the body overlaps their tops) */}
-      <Polygon points={`${cx - 0.02 * U},${Y(0.72)} ${cx - 0.13 * U},${Y(0.77)} ${cx - 0.02 * U},${Y(0.79)}`} fill="#F2922A" />
-      <Polygon points={`${cx + 0.02 * U},${Y(0.72)} ${cx + 0.13 * U},${Y(0.77)} ${cx + 0.02 * U},${Y(0.79)}`} fill="#F2922A" />
-
-      {/* body */}
-      <Ellipse cx={cx} cy={Y(0.46)} rx={0.21 * U} ry={0.30 * U} fill="#1B1B22" />
-
-      {/* wings */}
-      <Path d={`M ${cx - 0.18 * U} ${Y(0.34)} Q ${cx - 0.30 * U} ${Y(0.46)} ${cx - 0.16 * U} ${Y(0.60)} Q ${cx - 0.13 * U} ${Y(0.47)} ${cx - 0.16 * U} ${Y(0.35)} Z`} fill="#13131A" />
-      <Path d={`M ${cx + 0.18 * U} ${Y(0.34)} Q ${cx + 0.30 * U} ${Y(0.46)} ${cx + 0.16 * U} ${Y(0.60)} Q ${cx + 0.13 * U} ${Y(0.47)} ${cx + 0.16 * U} ${Y(0.35)} Z`} fill="#13131A" />
-
-      {/* belly */}
-      <Ellipse cx={cx} cy={Y(0.55)} rx={0.145 * U} ry={0.185 * U} fill="#FCFCFC" />
-
-      {/* eyes */}
-      <Circle cx={cx - 0.07 * U} cy={Y(0.30)} r={0.05 * U} fill="#FFFFFF" />
-      <Circle cx={cx + 0.07 * U} cy={Y(0.30)} r={0.05 * U} fill="#FFFFFF" />
-      <Circle cx={cx - 0.068 * U} cy={Y(0.305)} r={0.024 * U} fill="#1B1B22" />
-      <Circle cx={cx + 0.068 * U} cy={Y(0.305)} r={0.024 * U} fill="#1B1B22" />
-      <Circle cx={cx - 0.076 * U} cy={Y(0.296)} r={0.009 * U} fill="#FFFFFF" />
-      <Circle cx={cx + 0.06 * U} cy={Y(0.296)} r={0.009 * U} fill="#FFFFFF" />
-
-      {/* beak */}
-      <Polygon points={`${cx - 0.045 * U},${Y(0.35)} ${cx + 0.045 * U},${Y(0.35)} ${cx},${Y(0.42)}`} fill="#F6A21E" />
-      <Line x1={cx - 0.045 * U} y1={Y(0.35)} x2={cx + 0.045 * U} y2={Y(0.35)} stroke="#D97E12" strokeWidth={1} />
-    </Svg>
-  );
-}
-
-// Subtle tone-on-tone diagonal stripes, used to lift the minimalist card.
-function DiagonalStripes({ w, h, color = "#191970", opacity = 0.07, gap = 30, width = 14 }) {
-  const xs = [];
-  for (let x = -h; x < w + h; x += gap) xs.push(x);
-  return (
-    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-      {xs.map((x, i) => (
-        <Line key={i} x1={x} y1={0} x2={x + h} y2={h} stroke={color} strokeOpacity={opacity} strokeWidth={width} />
-      ))}
-    </Svg>
-  );
-}
-
-function DesignPreview({ design, selected, onPress }) {
+function DesignPreview({ design, selected, onPress, owned }) {
+  const { format } = useCurrency();
   const vertical = design.orientation === "v";
   const w = vertical ? V_CARD_W : CARD_W;
   const h = vertical ? V_CARD_H : CARD_H;
   const fg = design.fg;
-  const bgStops = design.stops || design.bgStops;
   const isImage = design.type === "image";
 
   return (
@@ -407,55 +53,8 @@ function DesignPreview({ design, selected, onPress }) {
           selected && styles.cardSelected,
         ]}
       >
-        {/* Background: hand-drawn scene, gradient, or solid */}
-        {design.scene === "forest" ? (
-          <ForestScene w={w} h={h} palette={FOREST_PALETTES[design.palette]} id={design.id} />
-        ) : design.scene === "basketball" ? (
-          <BasketballScene w={w} h={h} id={design.id} />
-        ) : design.scene === "penguin" ? (
-          <PenguinScene w={w} h={h} id={design.id} />
-        ) : bgStops ? (
-          <Svg width={w} height={h} style={StyleSheet.absoluteFill}>
-            <Defs>
-              <LinearGradient id={`bg-${design.id}`} x1="0" y1="0" x2="1" y2="1">
-                {bgStops.map(([offset, color]) => (
-                  <Stop key={offset} offset={offset} stopColor={color} stopOpacity="1" />
-                ))}
-              </LinearGradient>
-            </Defs>
-            <Rect x="0" y="0" width={w} height={h} fill={`url(#bg-${design.id})`} />
-          </Svg>
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: design.bg }]} />
-        )}
-
-        {design.stripes && <DiagonalStripes w={w} h={h} />}
-
-        {/* Artwork */}
-        {isImage && design.layout === "cover" && (
-          <Image source={design.image} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        )}
-        {isImage && design.layout === "right" && (
-          <Image source={design.image} style={styles.imgRight} resizeMode="contain" />
-        )}
-        {isImage && design.layout === "top" && (
-          <Image source={design.image} style={styles.imgTop} resizeMode="contain" />
-        )}
-
-        {/* Legibility scrim for full-bleed photos (darkens top & bottom) */}
-        {isImage && design.scrim && (
-          <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-            <Defs>
-              <LinearGradient id={`sc-${design.id}`} x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor="#000" stopOpacity={design.scrimTop ?? 0.5} />
-                <Stop offset="0.32" stopColor="#000" stopOpacity="0" />
-                <Stop offset="0.66" stopColor="#000" stopOpacity="0" />
-                <Stop offset="1" stopColor="#000" stopOpacity={design.scrimBottom ?? 0.62} />
-              </LinearGradient>
-            </Defs>
-            <Rect x="0" y="0" width={w} height={h} fill={`url(#sc-${design.id})`} />
-          </Svg>
-        )}
+        {/* Shared background artwork (identical to the Card screen) */}
+        <CardArtwork design={design} w={w} h={h} idKey="pc" />
 
         {/* Card chrome */}
         {isImage || design.minimalChrome ? (
@@ -487,8 +86,16 @@ function DesignPreview({ design, selected, onPress }) {
 
       <View style={[styles.metaRow, { width: w }]}>
         <Text style={styles.designName} numberOfLines={1}>{design.name}</Text>
-        <View style={[styles.pricePill, design.price === "Free" && styles.priceFree]}>
-          <Text style={styles.priceText}>{design.price}</Text>
+        <View
+          style={[
+            styles.pricePill,
+            design.price === "Free" && styles.priceFree,
+            owned && styles.priceOwned,
+          ]}
+        >
+          <Text style={styles.priceText}>
+            {owned ? "Owned" : priceLabel(design.price, format)}
+          </Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -498,18 +105,133 @@ function DesignPreview({ design, selected, onPress }) {
 export default function PersonalizeCard() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { format } = useCurrency();
   const dynamicStyles = useMemo(() => makeStyles(colors), [colors]);
 
   const [selectedId, setSelectedId] = useState("classic");
+  const [userId, setUserId] = useState(null);
+  const [balance, setBalance] = useState(0);
+  const [owned, setOwned] = useState([]); // design ids the user already paid for
+  const [buying, setBuying] = useState(false);
+  const [successInfo, setSuccessInfo] = useState(null); // {name, price} after a purchase
+
   const selected = DESIGNS.find((d) => d.id === selectedId);
+  const isOwned = (id) => owned.includes(id);
+  const selectedEur = selected ? priceEur(selected.price) : 0;
+  const selectedOwned = selected ? isOwned(selected.id) : false;
+
+  // Load the user's balance + which designs they already own.
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const stored = JSON.parse(await AsyncStorage.getItem("user"));
+          if (!stored) return;
+          setUserId(stored.user_id);
+
+          const cardRes = await fetch(`${API_BASE}/get_card.php?user_id=${stored.user_id}`);
+          const card = await cardRes.json();
+          if (card.status === "success") {
+            setBalance(Number(card.card.balance) || 0);
+          } else {
+            setBalance(Number(stored.balance) || 0);
+          }
+
+          const dRes = await fetch(`${API_BASE}/get_card_designs.php?user_id=${stored.user_id}`);
+          const d = await dRes.json();
+          if (d.status === "success") setOwned(d.owned || []);
+        } catch (e) {
+          console.log("PersonalizeCard load error:", e);
+        }
+      })();
+    }, [])
+  );
+
+  // Charge for the selected design (paid + not already owned).
+  const runBuy = async () => {
+    // A cosmetic card order is a "Shopping" purchase — warn (but don't block)
+    // if it would go over that budget, like the other spending screens.
+    const okBudget = await confirmOverBudget({ userId, category: "Shopping", amount: selectedEur });
+    if (!okBudget) return;
+
+    setBuying(true);
+    try {
+      // Only the design id is sent — the backend applies its own price, so the
+      // charge can never be tampered with from the client.
+      const res = await fetch(`${API_BASE}/buy_card_design.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, design_id: selected.id }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setBalance(Number(data.new_balance));
+        setOwned((prev) => [...prev, selected.id]);
+        // Keep the cached balance in sync for other screens.
+        try {
+          const stored = JSON.parse(await AsyncStorage.getItem("user"));
+          if (stored) {
+            await AsyncStorage.setItem(
+              "user",
+              JSON.stringify({ ...stored, balance: Number(data.new_balance) })
+            );
+          }
+        } catch (e) {
+          // ignore
+        }
+        setSuccessInfo({ name: data.design_name, price: format(data.price) });
+      } else {
+        Alert.alert("Couldn't complete", data.message || "Please try again.");
+      }
+    } catch (e) {
+      Alert.alert("Connection error", "Please try again.");
+    }
+    setBuying(false);
+  };
 
   const onContinue = () => {
+    if (!selected || buying) return;
+
+    // Free standard card — nothing to charge.
+    if (selectedEur <= 0) {
+      Alert.alert(
+        "Card applied",
+        `${selected.name} is the standard DS Banking card — no charge.`,
+        [{ text: "OK", onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+
+    // Already paid for — apply it again without charging.
+    if (selectedOwned) {
+      Alert.alert(
+        "Already yours",
+        `You already own the ${selected.name} card design. Set it as your card from the Card screen anytime — nothing to pay.`,
+        [{ text: "OK", onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+
+    if (Number(balance) < selectedEur) {
+      Alert.alert(
+        "Insufficient balance",
+        `You need ${format(selectedEur)} to order the ${selected.name} card.`
+      );
+      return;
+    }
+
     Alert.alert(
-      "Request Submitted",
-      "Your card personalisation request has been submitted successfully. It will be reviewed and approved within 3 business days.",
-      [{ text: "OK", onPress: () => navigation.goBack() }]
+      "Order this card design",
+      `Order the ${selected.name} card for ${format(selectedEur)}? The amount will be charged from your balance now.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: `Pay ${format(selectedEur)}`, onPress: runBuy },
+      ]
     );
   };
+
+  const continueLabel =
+    selectedEur <= 0 ? "Use This Card" : selectedOwned ? "Owned" : `Pay ${format(selectedEur)}`;
 
   return (
     <View style={dynamicStyles.container}>
@@ -527,7 +249,9 @@ export default function PersonalizeCard() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={dynamicStyles.intro}>
-            Choose a design for your card. Tap a style to preview it.
+            Choose a design for your card. Tap a style to preview it, then order it — the price is
+            charged from your balance and your card arrives within 3 business days. Owned designs can
+            be set as your card from the Card screen.
           </Text>
 
           {DESIGNS.map((design) => (
@@ -535,6 +259,7 @@ export default function PersonalizeCard() {
               key={design.id}
               design={design}
               selected={selectedId === design.id}
+              owned={isOwned(design.id)}
               onPress={() => setSelectedId(design.id)}
             />
           ))}
@@ -542,16 +267,43 @@ export default function PersonalizeCard() {
 
         <View style={dynamicStyles.footer}>
           <View style={dynamicStyles.footerInfo}>
-            <Text style={dynamicStyles.footerLabel}>Selected</Text>
+            <Text style={dynamicStyles.footerLabel}>Balance: {format(balance)}</Text>
             <Text style={dynamicStyles.footerValue} numberOfLines={1}>
-              {selected?.name} · {selected?.price}
+              {selected?.name} ·{" "}
+              {selectedOwned ? "Owned" : selected ? priceLabel(selected.price, format) : ""}
             </Text>
           </View>
-          <TouchableOpacity style={dynamicStyles.continueBtn} onPress={onContinue}>
-            <Text style={dynamicStyles.continueText}>Continue</Text>
+          <TouchableOpacity
+            style={[dynamicStyles.continueBtn, buying && { opacity: 0.7 }]}
+            onPress={onContinue}
+            disabled={buying}
+          >
+            {buying ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={dynamicStyles.continueText}>{continueLabel}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <SuccessOverlay
+        visible={!!successInfo}
+        title="Card ordered!"
+        subtitle={
+          successInfo
+            ? `Your ${successInfo.name} card (${successInfo.price}) has been ordered and will arrive within 3 business days.`
+            : ""
+        }
+        color={colors.success}
+        cardColor={colors.card}
+        textColor={colors.text}
+        subTextColor={colors.textSecondary}
+        onDone={() => {
+          setSuccessInfo(null);
+          navigation.goBack();
+        }}
+      />
     </View>
   );
 }
@@ -569,10 +321,6 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   cardSelected: { borderWidth: 3, borderColor: "#fff" },
-
-  // Artwork placement
-  imgRight: { position: "absolute", right: 8, top: 12, bottom: 12, width: "48%" },
-  imgTop: { position: "absolute", top: "14%", left: 16, right: 16, height: "56%" },
 
   // Chrome (full = gradient cards, img = image cards)
   chromeFull: { ...StyleSheet.absoluteFillObject, padding: 20, justifyContent: "space-between" },
@@ -613,6 +361,7 @@ const styles = StyleSheet.create({
   designName: { fontSize: 16, fontWeight: "700", color: "#888", flexShrink: 1, paddingRight: 10 },
   pricePill: { backgroundColor: "#191970", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16 },
   priceFree: { backgroundColor: "#2E7D32" },
+  priceOwned: { backgroundColor: "#0E7A5F" },
   priceText: { color: "#fff", fontWeight: "800", fontSize: 13 },
 });
 

@@ -9,16 +9,13 @@
 // Text is in English to match the other new features.
 
 import { DS_LOGO } from "./dsLogo";
+import { formatDateTime } from "./datetime";
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const money = (n) => round2(n).toFixed(2) + " EUR";
 
 const esc = (s) =>
   String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-
-const pad = (n) => (n < 10 ? "0" + n : "" + n);
-const fmtDateTime = (d) =>
-  `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 // e.g. 42 -> "DSB-00000042"
 const fmtTxId = (id) => "DSB-" + String(id == null ? "" : id).padStart(8, "0");
@@ -33,8 +30,7 @@ export function buildReceiptHtml({ user, tx }) {
     : `${tx.sender_name || ""} ${tx.sender_surname || ""}`.trim();
   const holder = `${user.name || ""} ${user.surname || ""}`.trim() || "—";
 
-  const date = new Date(tx.created_at);
-  const dateStr = isNaN(date.getTime()) ? "—" : fmtDateTime(date);
+  const dateStr = tx.created_at ? formatDateTime(tx.created_at) : "—";
 
   const fromName = sent ? holder : counterparty || "—";
   const toName = sent ? counterparty || "—" : holder;

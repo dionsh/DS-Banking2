@@ -23,12 +23,14 @@ import InfoAccordion from "../components/InfoAccordion";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
 
 
 export default function Credit() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { format } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { width } = Dimensions.get("window");
@@ -85,7 +87,7 @@ export default function Credit() {
   const handleApply = () => {
     Alert.alert(
       "Take Credit",
-      `Are you sure you want to take a credit of €${Math.round(amount)} over ${months} months?`,
+      `Are you sure you want to take a credit of ${format(amount)} over ${months} months?`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Yes", onPress: () => { setPin(""); setPinModalVisible(true); } },
@@ -217,7 +219,7 @@ export default function Credit() {
         <View style={styles.resultBox}>
   <Text style={styles.resultText}>{t("credit.monthlyPayment")}</Text>
   <Text style={styles.resultAmount}>
-    €{monthlyPayment.toFixed(2)}
+    {format(monthlyPayment)}
   </Text>
 </View>
 

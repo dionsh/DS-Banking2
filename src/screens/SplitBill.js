@@ -31,9 +31,10 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import { confirmOverBudget } from "../utils/budgetGuard";
+import { formatDate } from "../utils/datetime";
 
-const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 const GREEN = "#2E7D32";
 
 const STATUS_META = {
@@ -46,7 +47,12 @@ export default function SplitBill() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { format, formatRaw, convert, toEur, code } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Backend amounts (balance, shares) are EUR — shown in the display currency.
+  // Values the user TYPES are already in the display currency (formatRaw).
+  const eur = format;
 
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState(0);
@@ -177,7 +183,8 @@ export default function SplitBill() {
         body: JSON.stringify({
           user_id: user.user_id,
           emails,
-          total: reqTotalNum,
+          // Typed in the display currency; the backend stores EUR.
+          total: Math.round(toEur(reqTotalNum) * 100) / 100,
           note: reqNote.trim(),
         }),
       });
@@ -281,7 +288,9 @@ export default function SplitBill() {
       Alert.alert(t("common.error"), t("split.min2"));
       return;
     }
-    if (share > balance) {
+    // Typed in the display currency; the backend works in EUR.
+    const shareEur = Math.round(toEur(share) * 100) / 100;
+    if (shareEur > balance) {
       Alert.alert(t("topup.insufficient"), t("split.shareTooBig"));
       return;
     }
@@ -291,7 +300,7 @@ export default function SplitBill() {
     const okBudget = await confirmOverBudget({
       userId: user.user_id,
       category: "Split Bills",
-      amount: share,
+      amount: shareEur,
     });
     if (!okBudget) return;
 
@@ -302,7 +311,7 @@ export default function SplitBill() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.user_id,
-          total: totalNum,
+          total: Math.round(toEur(totalNum) * 100) / 100,
           people,
           label: label.trim(),
         }),
@@ -313,7 +322,7 @@ export default function SplitBill() {
         await updateStoredBalance(data.new_balance);
         Alert.alert(
           t("split.doneTitle"),
-          t("split.doneMsg", { desc: data.description, share: Number(data.share).toFixed(2) }),
+          t("split.doneMsg", { desc: data.description, share: format(data.share) }),
           [{ text: t("common.ok") }]
         );
         setTotal("");
@@ -371,7 +380,8 @@ export default function SplitBill() {
           date: data.date ? String(data.date) : "",
         };
         setScanResult(result);
-        setTotal(result.total.toFixed(2));
+        // The receipt total is EUR — prefill the input in the display currency.
+        setTotal((Math.round(convert(result.total) * 100) / 100).toFixed(2));
         if (!label.trim()) setLabel(result.id ? "Receipt " + result.id : "Scanned receipt");
         setScannerOpen(false);
       } else if (data.status === "success") {
@@ -457,7 +467,7 @@ export default function SplitBill() {
           <Text style={styles.reqSub} numberOfLines={1}>
             {req.note ? `"${req.note}" · ` : ""}
             {eur(req.total_amount)} · asked for {eur(req.share_amount)} ·{" "}
-            {new Date(req.created_at.replace(" ", "T")).toLocaleDateString("de-DE")}
+            {formatDate(req.created_at)}
           </Text>
         </View>
         <View style={[styles.statusPill, { borderColor: statusColor }]}>
@@ -521,7 +531,7 @@ export default function SplitBill() {
       >
         <View style={styles.balanceRow}>
           <Text style={styles.balanceLabel}>{t("split.availableBalance")}</Text>
-          <Text style={styles.balanceValue}>{Number(balance).toFixed(2)} EUR</Text>
+          <Text style={styles.balanceValue}>{format(balance)}</Text>
         </View>
 
         {tab === "friend" ? (
@@ -582,7 +592,7 @@ export default function SplitBill() {
               <TextInput
                 style={styles.amountInput}
                 keyboardType="numeric"
-                placeholder="0.00 EUR"
+                placeholder={`0.00 ${code}`}
                 placeholderTextColor={colors.placeholder}
                 value={reqTotal}
                 onChangeText={setReqTotal}
@@ -610,7 +620,7 @@ export default function SplitBill() {
                   <View style={styles.splitPreviewDivider} />
                   <View style={styles.splitPreviewRow}>
                     <Text style={styles.splitPreviewEachLabel}>Each person pays</Text>
-                    <Text style={styles.splitPreviewEach}>{eur(reqShare)}</Text>
+                    <Text style={styles.splitPreviewEach}>{formatRaw(reqShare)}</Text>
                   </View>
                 </View>
               )}
@@ -665,7 +675,7 @@ export default function SplitBill() {
               <View style={styles.detectedCard}>
                 <MaterialCommunityIcons name="receipt" size={18} color={colors.success} />
                 <Text style={styles.detectedText}>
-                  Detected {eur(scanResult.total)} · {scanResult.date} · {scanResult.id}
+                  Detected {format(scanResult.total)} · {scanResult.date} · {scanResult.id}
                 </Text>
               </View>
             )}
@@ -676,7 +686,7 @@ export default function SplitBill() {
               <TextInput
                 style={styles.amountInput}
                 keyboardType="numeric"
-                placeholder="0.00 EUR"
+                placeholder={`0.00 ${code}`}
                 placeholderTextColor={colors.placeholder}
                 value={total}
                 onChangeText={setTotal}
@@ -711,11 +721,11 @@ export default function SplitBill() {
 
             <View style={styles.summaryCard}>
               <Text style={styles.summaryTitle}>{t("split.eachOwes")}</Text>
-              <Text style={styles.summaryAmount}>{share.toFixed(2)} EUR</Text>
+              <Text style={styles.summaryAmount}>{formatRaw(share)}</Text>
               <View style={styles.summaryDivider} />
               <View style={styles.summaryLine}>
                 <Text style={styles.summaryLineLabel}>{t("split.sTotal")}</Text>
-                <Text style={styles.summaryLineValue}>{totalNum.toFixed(2)} EUR</Text>
+                <Text style={styles.summaryLineValue}>{formatRaw(totalNum)}</Text>
               </View>
               <View style={styles.summaryLine}>
                 <Text style={styles.summaryLineLabel}>{t("split.sSplitBetween")}</Text>
@@ -726,7 +736,7 @@ export default function SplitBill() {
                   {t("split.yourShare")}
                 </Text>
                 <Text style={[styles.summaryLineValue, { fontWeight: "700", color: colors.accent }]}>
-                  {share.toFixed(2)} EUR
+                  {formatRaw(share)}
                 </Text>
               </View>
             </View>

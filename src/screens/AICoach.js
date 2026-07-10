@@ -25,9 +25,8 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import AnimatedNumber from "../components/AnimatedNumber";
-
-const eur = (n) => "€" + (Number(n) || 0).toFixed(2);
 
 // Accent color per insight type (works on both themes).
 const TYPE_COLORS = {
@@ -41,7 +40,11 @@ const TYPE_COLORS = {
 export default function AICoach() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { format } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Coach amounts are EUR — display them in the chosen currency.
+  const eur = format;
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -137,17 +140,17 @@ export default function AICoach() {
           <Text style={styles.summaryMonth}>{summary.month_label} at a glance</Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <AnimatedNumber value={summary.this_month_expenses} style={[styles.summaryValue, { color: colors.danger }]} />
+              <AnimatedNumber value={summary.this_month_expenses} format={format} style={[styles.summaryValue, { color: colors.danger }]} />
               <Text style={styles.summaryLabel}>SPENT</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <AnimatedNumber value={summary.this_month_income} style={[styles.summaryValue, { color: colors.success }]} />
+              <AnimatedNumber value={summary.this_month_income} format={format} style={[styles.summaryValue, { color: colors.success }]} />
               <Text style={styles.summaryLabel}>INCOME</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <AnimatedNumber value={summary.avg_daily_spend} style={styles.summaryValue} />
+              <AnimatedNumber value={summary.avg_daily_spend} format={format} style={styles.summaryValue} />
               <Text style={styles.summaryLabel}>PER DAY</Text>
             </View>
           </View>

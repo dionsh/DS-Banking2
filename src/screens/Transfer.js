@@ -16,6 +16,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../currency/CurrencyContext";
 import { confirmOverBudget } from "../utils/budgetGuard";
 import { MotionView, PressableScale, SuccessOverlay } from "../components/motion";
 
@@ -23,6 +24,7 @@ export default function Transfer() {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { t } = useLanguage();
+  const { formatRaw, toEur, code } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [sender, setSender] = useState({});
@@ -81,10 +83,11 @@ export default function Transfer() {
     }
     // Warn (but don't block) if this transfer would go over the user's monthly
     // "Transfers" budget — asked before the PIN step so they can back out early.
+    // The amount is typed in the display currency; budgets/backend work in EUR.
     const okBudget = await confirmOverBudget({
       userId: sender.user_id,
       category: "Transfers",
-      amount: parseFloat(amount),
+      amount: Math.round(toEur(parseFloat(amount)) * 100) / 100,
     });
     if (!okBudget) return;
     setPin("");
@@ -122,13 +125,15 @@ export default function Transfer() {
 
   // Step 3: the actual money transfer (runs only after the PIN is verified).
   const sendTransfer = async () => {
+    // Typed in the display currency; the account/backend work in EUR.
+    const eurAmount = Math.round(toEur(parseFloat(amount)) * 100) / 100;
     try {
       const response = await fetch(`${API_BASE}/transfer.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sender_id: sender.user_id,
-          amount: parseFloat(amount),
+          amount: eurAmount,
           receiver_account_number: accountDigits,
           receiver_name: receiverName.trim(),
           receiver_surname: receiverSurname.trim(),
@@ -145,7 +150,7 @@ export default function Transfer() {
         // E bane update balancen e njerit qe dergon pare lokalisht
         const updatedUser = {
           ...sender,
-          balance: parseFloat(sender.balance) - parseFloat(amount),
+          balance: parseFloat(sender.balance) - eurAmount,
 
         };
 
@@ -158,7 +163,7 @@ export default function Transfer() {
         // Animated confirmation (check pop + ring) instead of a plain alert;
         // navigates back automatically when it finishes.
         setSuccessSummary(
-          `${parseFloat(amount).toFixed(2)} EUR → ${receiverName.trim()} ${receiverSurname.trim()}`
+          `${formatRaw(parseFloat(amount))} → ${receiverName.trim()} ${receiverSurname.trim()}`
         );
         setSuccessOpen(true);
       } else {
@@ -198,7 +203,7 @@ export default function Transfer() {
     textAlign: "center"
   }]}
   keyboardType="numeric"
-  placeholder="0.00 EUR"
+  placeholder={`0.00 ${code}`}
   placeholderTextColor={colors.placeholder}
   value={amount}
   onChangeText={setAmount}
@@ -264,7 +269,7 @@ export default function Transfer() {
           </View>
           <Text style={styles.pinTitle}>{t("login.enterPin")}</Text>
           <Text style={styles.pinSubtitle}>
-            Confirm your transfer of {amount || "0"} EUR
+            Confirm your transfer of {amount || "0"} {code}
           </Text>
 
           <TextInput

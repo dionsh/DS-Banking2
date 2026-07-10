@@ -8,6 +8,7 @@
 // content does not need translating).
 
 import { DS_LOGO } from "./dsLogo";
+import { formatDate } from "./datetime";
 
 const ACCOUNT_CATEGORY = "KE-7 — LA"; // made-up account class shown on the statement
 
@@ -17,9 +18,6 @@ const signed = (n) => (n >= 0 ? "+ " : "- ") + money(Math.abs(n));
 
 const esc = (s) =>
   String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-
-const pad = (n) => (n < 10 ? "0" + n : "" + n);
-const fmtDate = (d) => `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
 
 // A small DS Banking wordmark (a navy monogram badge + the brand name) so the
 // statement carries the logo without bundling an image into the WebView.
@@ -46,13 +44,13 @@ export function buildStatementHtml({ user, transactions, currentBalance }) {
     const counterparty = isUserSender(tx)
       ? `${tx.receiver_name || ""} ${tx.receiver_surname || ""}`.trim()
       : `${tx.sender_name || ""} ${tx.sender_surname || ""}`.trim();
-    return { date: fmtDate(new Date(tx.created_at)), name: counterparty || "—", desc: tx.description || "", amt };
+    return { date: formatDate(tx.created_at), name: counterparty || "—", desc: tx.description || "", amt };
   });
 
   const holder = `${user.name || ""} ${user.surname || ""}`.trim() || "—";
   const account = user.account_number || "—";
   const balance = parseFloat(currentBalance) || 0;
-  const todayStr = fmtDate(new Date());
+  const todayStr = formatDate(new Date());
 
   const rowsHtml = rows.length
     ? rows

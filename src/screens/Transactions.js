@@ -22,6 +22,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../currency/CurrencyContext";
 import { buildStatementHtml } from "../utils/statementHtml";
 import { buildReceiptHtml } from "../utils/receiptHtml";
+import { formatDate, formatTime } from "../utils/datetime";
 import AnimatedNumber from "../components/AnimatedNumber";
 import { AnimatedListItem, MotionView, PressableScale, SkeletonBlock } from "../components/motion";
 
@@ -164,11 +165,11 @@ const renderItem = ({ item, index }) => {
   const isSender = item.sender_name === user.name
     && item.sender_surname === user.surname;
 
-  const amount = parseFloat(item.amount).toFixed(2);
+  // Ledger amounts are EUR — rows follow the display currency like the header.
   const amountColor = isSender ? colors.text : colors.success;
   const amountText = isSender
-    ? `- ${amount} EUR`
-    : `+ ${amount} EUR`;
+    ? `- ${format(item.amount)}`
+    : `+ ${format(item.amount)}`;
 
   const title = isSender
     ? `${item.receiver_name} ${item.receiver_surname}`
@@ -189,7 +190,7 @@ const renderItem = ({ item, index }) => {
         ) : null}
 
         <Text style={styles.date}>
-          {new Date(item.created_at).toLocaleDateString("de-DE")}
+          {formatDate(item.created_at)} · {formatTime(item.created_at)}
         </Text>
       </View>
 

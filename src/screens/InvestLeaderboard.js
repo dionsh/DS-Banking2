@@ -21,22 +21,28 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { API_BASE } from "../config";
 import { useTheme } from "../theme/ThemeContext";
+import { useCurrency } from "../currency/CurrencyContext";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 const PODIUM_COLORS = ["#F5B301", "#B0BEC5", "#CD7F32"]; // gold, silver, bronze
 
 // Manual thousands formatting (Hermes' toLocaleString isn't always reliable).
-const money = (n) => {
-  const v = Number(n) || 0;
+const groupAbs = (v) => {
   const [int, dec] = Math.abs(v).toFixed(2).split(".");
-  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return (v < 0 ? "-" : "") + "€" + grouped + "." + dec;
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + dec;
 };
 
 export default function InvestLeaderboard() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { symbol, convert } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Backend values are EUR — show them (grouped) in the display currency.
+  const money = (eur) => {
+    const v = convert(eur);
+    return (v < 0 ? "-" : "") + symbol + (symbol.length > 1 ? " " : "") + groupAbs(v);
+  };
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

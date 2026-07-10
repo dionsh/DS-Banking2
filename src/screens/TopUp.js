@@ -28,7 +28,7 @@ export default function TopUp() {
 
   const { colors } = useTheme();
   const { t } = useLanguage();
-  const { format } = useCurrency();
+  const { format, formatRaw, toEur, code } = useCurrency();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [cardData, setCardData] = useState(null);
@@ -117,12 +117,14 @@ export default function TopUp() {
     if (!amount) return Alert.alert(t("common.error"), t("topup.selectAmount"));
     if (!receiverName || !receiverSurname) return Alert.alert(t("common.error"), t("topup.enterReceiver"));
 
+    // Typed in the display currency; balance/budget/backend work in EUR.
     const totalAmount = parseFloat(amount);
-    if (cardData.balance < totalAmount) return Alert.alert(t("common.error"), t("topup.insufficient"));
+    const eurAmount = Math.round(toEur(totalAmount) * 100) / 100;
+    if (cardData.balance < eurAmount) return Alert.alert(t("common.error"), t("topup.insufficient"));
 
     // Warn (but don't block) if this top-up would go over the user's monthly
     // "Phone Top-Ups" budget.
-    const okBudget = await confirmOverBudget({ userId: user_id, category: "Top Up", amount: totalAmount });
+    const okBudget = await confirmOverBudget({ userId: user_id, category: "Top Up", amount: eurAmount });
     if (!okBudget) return;
 
     setSending(true);
@@ -134,7 +136,7 @@ export default function TopUp() {
           user_id,
           company_id: selectedCompany,
           phone_number: `${callingCode} ${phoneNumber}`,
-          amount: totalAmount,
+          amount: eurAmount,
           receiver_name: receiverName,
           receiver_surname: receiverSurname,
         }),
@@ -143,9 +145,9 @@ export default function TopUp() {
       const data = await response.json();
       if (data.status === "success") {
         // Animated confirmation instead of a plain alert.
-        setSuccessSummary(`${totalAmount.toFixed(2)} EUR → ${callingCode} ${phoneNumber}`);
+        setSuccessSummary(`${formatRaw(totalAmount)} → ${callingCode} ${phoneNumber}`);
         setSuccessOpen(true);
-        setCardData({ ...cardData, balance: (cardData.balance - totalAmount).toFixed(2) });
+        setCardData({ ...cardData, balance: (cardData.balance - eurAmount).toFixed(2) });
         setSelectedCompany(null);
         setPhoneNumber("");
         setAmount("");
@@ -239,7 +241,7 @@ export default function TopUp() {
             <TextInput
               style={styles.amountInput}
               keyboardType="numeric"
-              placeholder="0.00 EUR"
+              placeholder={`0.00 ${code}`}
               placeholderTextColor={colors.placeholder}
               value={amount}
               onChangeText={setAmount}
@@ -252,7 +254,7 @@ export default function TopUp() {
                   scaleTo={0.9}
                   onPress={() => handleAmountButton(val)}
                 >
-                  <Text style={styles.amountButtonText}>{val} EUR</Text>
+                  <Text style={styles.amountButtonText}>{val} {code}</Text>
                 </PressableScale>
               ))}
             </View>
